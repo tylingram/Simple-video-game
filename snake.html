@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: monospace;
+    color: #eee;
+  }
+  h1 { font-size: 2rem; margin-bottom: 8px; letter-spacing: 4px; color: #4ecca3; }
+  #hud {
+    display: flex;
+    gap: 40px;
+    margin-bottom: 12px;
+    font-size: 1rem;
+  }
+  #hud span { color: #a0a0c0; }
+  #hud strong { color: #4ecca3; }
+  canvas {
+    border: 2px solid #4ecca3;
+    box-shadow: 0 0 20px #4ecca355;
+    background: #0f0f23;
+  }
+  #msg {
+    margin-top: 16px;
+    font-size: 0.95rem;
+    color: #a0a0c0;
+    letter-spacing: 1px;
+  }
+  #overlay {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #eee;
+    pointer-events: none;
+  }
+  #overlay h2 { font-size: 1.8rem; color: #ff6b6b; margin-bottom: 8px; }
+  #overlay p  { font-size: 1rem; color: #a0a0c0; }
+</style>
+</head>
+<body>
+<h1>SNAKE</h1>
+<div id="hud">
+  <div><span>SCORE </span><strong id="score">0</strong></div>
+  <div><span>BEST &nbsp;</span><strong id="best">0</strong></div>
+  <div><span>LEVEL </span><strong id="level">1</strong></div>
+</div>
+<div style="position:relative">
+  <canvas id="c" width="400" height="400"></canvas>
+  <div id="overlay">
+    <h2 id="overlay-title">SNAKE</h2>
+    <p id="overlay-sub">Press SPACE or ENTER to start</p>
+  </div>
+</div>
+<div id="msg">Arrow keys or WASD to move</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const COLS = 20, ROWS = 20;
+const CELL = canvas.width / COLS;
+
+let snake, dir, next_dir, food, score, best, level, speed, running, loopId;
+
+const scoreEl = document.getElementById('score');
+const bestEl  = document.getElementById('best');
+const levelEl = document.getElementById('level');
+const overlay = document.getElementById('overlay');
+const oTitle  = document.getElementById('overlay-title');
+const oSub    = document.getElementById('overlay-sub');
+
+best = parseInt(localStorage.getItem('snake_best') || '0');
+bestEl.textContent = best;
+
+function init() {
+  snake = [{x:10, y:10}, {x:9, y:10}, {x:8, y:10}];
+  dir = {x:1, y:0};
+  next_dir = {x:1, y:0};
+  score = 0;
+  level = 1;
+  speed = 150;
+  running = true;
+  scoreEl.textContent = 0;
+  levelEl.textContent = 1;
+  overlay.style.display = 'none';
+  placeFood();
+  clearInterval(loopId);
+  loopId = setInterval(tick, speed);
+}
+
+function placeFood() {
+  let pos;
+  do {
+    pos = {x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS)};
+  } while (snake.some(s => s.x === pos.x && s.y === pos.y));
+  food = pos;
+}
+
+function setSpeed(s) {
+  speed = s;
+  clearInterval(loopId);
+  loopId = setInterval(tick, speed);
+}
+
+function tick() {
+  dir = next_dir;
+  const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+
+  // Wall collision
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+    return gameOver();
+  }
+  // Self collision
+  if (snake.some(s => s.x === head.x && s.y === head.y)) {
+    return gameOver();
+  }
+
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    score += 10 * level;
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      localStorage.setItem('snake_best', best);
+    }
+    // Level up every 5 foods
+    if (snake.length % 5 === 0) {
+      level++;
+      levelEl.textContent = level;
+      setSpeed(Math.max(60, speed - 15));
+    }
+    placeFood();
+  } else {
+    snake.pop();
+  }
+
+  draw();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid dots
+  ctx.fillStyle = '#1a1a3a';
+  for (let x = 0; x < COLS; x++)
+    for (let y = 0; y < ROWS; y++)
+      ctx.fillRect(x * CELL + CELL/2 - 1, y * CELL + CELL/2 - 1, 2, 2);
+
+  // Food
+  const fx = food.x * CELL, fy = food.y * CELL;
+  ctx.fillStyle = '#ff6b6b';
+  ctx.shadowColor = '#ff6b6b';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(fx + CELL/2, fy + CELL/2, CELL/2 - 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Snake
+  snake.forEach((seg, i) => {
+    const t = 1 - i / snake.length;
+    ctx.fillStyle = i === 0
+      ? '#4ecca3'
+      : `hsl(160, 60%, ${20 + t * 35}%)`;
+    ctx.shadowColor = i === 0 ? '#4ecca3' : 'transparent';
+    ctx.shadowBlur = i === 0 ? 8 : 0;
+    const pad = i === 0 ? 1 : 2;
+    ctx.beginPath();
+    ctx.roundRect(seg.x * CELL + pad, seg.y * CELL + pad, CELL - pad*2, CELL - pad*2, 3);
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+
+  // Eyes on head
+  const hx = snake[0].x * CELL, hy = snake[0].y * CELL;
+  ctx.fillStyle = '#0f0f23';
+  const ex = dir.y !== 0 ? [-4, 4] : [dir.x > 0 ? 4 : -4, dir.x > 0 ? 4 : -4];
+  const ey = dir.x !== 0 ? [-4, 4] : [dir.y > 0 ? 4 : -4, dir.y > 0 ? 4 : -4];
+  [[ex[0], ey[0]], [ex[1], ey[1]]].forEach(([ox, oy]) => {
+    ctx.beginPath();
+    ctx.arc(hx + CELL/2 + ox, hy + CELL/2 + oy, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function gameOver() {
+  running = false;
+  clearInterval(loopId);
+  draw();
+  oTitle.textContent = 'GAME OVER';
+  oSub.textContent = `Score: ${score} — Press SPACE to restart`;
+  overlay.style.display = 'flex';
+}
+
+document.addEventListener('keydown', e => {
+  if (!running) {
+    if (e.code === 'Space' || e.code === 'Enter') init();
+    return;
+  }
+  switch (e.key) {
+    case 'ArrowUp':    case 'w': case 'W': if (dir.y === 0) next_dir = {x:0, y:-1}; break;
+    case 'ArrowDown':  case 's': case 'S': if (dir.y === 0) next_dir = {x:0, y: 1}; break;
+    case 'ArrowLeft':  case 'a': case 'A': if (dir.x === 0) next_dir = {x:-1, y:0}; break;
+    case 'ArrowRight': case 'd': case 'D': if (dir.x === 0) next_dir = {x: 1, y:0}; break;
+  }
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+});
+</script>
+</body>
+</html>
