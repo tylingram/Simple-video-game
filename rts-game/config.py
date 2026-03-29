@@ -71,6 +71,14 @@ _defaults = {
         "value": 300.0,
         "description": "Max distance a drone can be commanded from the carrier in mm",
     },
+    "ISLANDS_PER_MAP": {
+        "value": 3.0,
+        "description": "Number of random island obstacles on the map",
+    },
+    "ISLAND_SIZE_MM": {
+        "value": 30.0,
+        "description": "Full width/diameter of each island in mm",
+    },
 }
 
 
