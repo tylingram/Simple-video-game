@@ -10,7 +10,7 @@ from fog_of_war import FogOfWar
 from units.carrier import Carrier
 from units.drone import create_formation
 import config as cfg
-from islands import Islands
+from ponds import Ponds
 
 WINDOWED_W = 1280
 WINDOWED_H = 720
@@ -68,7 +68,7 @@ def main():
     hud      = HUD()
     game_map = GameMap()
     fog      = FogOfWar()
-    islands  = Islands()
+    ponds    = Ponds()
     carrier  = Carrier()
     drones   = create_formation()
     launch_config_editor()
@@ -86,7 +86,8 @@ def main():
             mtime = os.path.getmtime(config_path)
             if mtime > last_mtime:
                 cfg.load_from_disk()
-                islands.reset()
+                game_map.reset()
+                ponds.reset()
                 carrier.reset()
                 fog.reset()
                 drones     = create_formation()
@@ -135,7 +136,8 @@ def main():
         # --- Update ---
         keys = pygame.key.get_pressed()
         carrier.update(dt, keys)
-        islands.resolve_carrier(carrier)
+        game_map.resolve_carrier(carrier)
+        ponds.resolve_carrier(carrier)
         for drone in drones:
             drone.update(dt, drones)
 
@@ -199,7 +201,7 @@ def main():
 
         # --- Draw ---
         game_map.draw(screen, camera_x_mm, camera_y_mm, game_h)
-        islands.draw(screen, camera_x_mm, camera_y_mm, game_h)
+        ponds.draw(screen, camera_x_mm, camera_y_mm, game_h)
         carrier.draw(screen, game_h)
         for drone in drones:
             drone.draw(screen, game_h)
