@@ -10,9 +10,13 @@ from pathlib import Path
 SAVE_FILE = Path(__file__).parent / "config.json"
 
 DEFAULTS = {
-    "HUD_SIZE":           {"value": 10.0,  "description": "Changes the % of screen taken up by HUD"},
-    "CARRIER_WIDTH_MM":   {"value": 5.0,   "description": "Width of the Carrier unit in mm"},
-    "CARRIER_HEIGHT_MM":  {"value": 10.0,  "description": "Height of the Carrier unit in mm"},
+    "HUD_SIZE":              {"value": 10.0,   "description": "Changes the % of screen taken up by HUD"},
+    "CARRIER_WIDTH_MM":      {"value": 5.0,    "description": "Width of the Carrier unit in mm"},
+    "CARRIER_HEIGHT_MM":     {"value": 10.0,   "description": "Height of the Carrier unit in mm"},
+    "CARRIER_ACCELERATION":  {"value": 1.0,    "description": "Carrier acceleration in mm/s²"},
+    "CARRIER_TOP_SPEED":     {"value": 20.0,   "description": "Carrier max speed in mm/s"},
+    "MAP_WIDTH_MM":          {"value": 1000.0, "description": "Map width in mm"},
+    "MAP_HEIGHT_MM":         {"value": 1000.0, "description": "Map height in mm"},
 }
 
 

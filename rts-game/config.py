@@ -23,6 +23,22 @@ _defaults = {
         "value": 10.0,
         "description": "Height of the Carrier unit in mm",
     },
+    "CARRIER_ACCELERATION": {
+        "value": 1.0,
+        "description": "Carrier acceleration in mm/s²",
+    },
+    "CARRIER_TOP_SPEED": {
+        "value": 20.0,
+        "description": "Carrier max speed in mm/s",
+    },
+    "MAP_WIDTH_MM": {
+        "value": 1000.0,
+        "description": "Map width in mm",
+    },
+    "MAP_HEIGHT_MM": {
+        "value": 1000.0,
+        "description": "Map height in mm",
+    },
 }
 
 

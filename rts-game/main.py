@@ -4,6 +4,7 @@ import subprocess
 import pygame
 import settings
 from hud import HUD
+from game_map import GameMap
 from units.carrier import Carrier
 import config as cfg
 
@@ -44,8 +45,9 @@ def main():
     pygame.display.set_caption(settings.TITLE)
     clock = pygame.time.Clock()
 
-    hud     = HUD()
-    carrier = Carrier()
+    hud      = HUD()
+    game_map = GameMap()
+    carrier  = Carrier()
     launch_config_editor()
 
     # Track config.json modification time to reload when editor saves
@@ -54,7 +56,7 @@ def main():
 
     running = True
     while running:
-        clock.tick(settings.FPS)
+        dt = clock.tick(settings.FPS) / 1000.0   # seconds since last frame
 
         # --- Reload config if editor saved changes ---
         try:
@@ -77,13 +79,22 @@ def main():
                 settings.SCREEN_WIDTH  = event.x
                 settings.SCREEN_HEIGHT = event.y
 
+        # --- Update ---
+        keys = pygame.key.get_pressed()
+        carrier.update(dt, keys)
+
         # --- Layout ---
         hud_h  = max(1, int(settings.SCREEN_HEIGHT * cfg.get("HUD_SIZE") / 100))
         game_h = settings.SCREEN_HEIGHT - hud_h
 
+        # Camera: top-left of viewport in world-space mm
+        px_per_mm   = settings.DPI / 25.4
+        camera_x_mm = carrier.x - (settings.SCREEN_WIDTH / 2) / px_per_mm
+        camera_y_mm = carrier.y - (game_h              / 2) / px_per_mm
+
         # --- Draw ---
-        pygame.draw.rect(screen, settings.BLACK, (0, 0, settings.SCREEN_WIDTH, game_h))
-        carrier.draw(screen)
+        game_map.draw(screen, camera_x_mm, camera_y_mm, game_h)
+        carrier.draw(screen, game_h)
         hud.draw(screen)
         pygame.display.flip()
 
