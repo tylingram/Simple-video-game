@@ -59,6 +59,18 @@ _defaults = {
         "value": 20.0,
         "description": "Distance from carrier centre to each drone at start in mm",
     },
+    "DEFAULT_DRONE_ACCELERATION": {
+        "value": 400.0,
+        "description": "Drone acceleration in mm/s²",
+    },
+    "DEFAULT_DRONE_MAX_SPEED": {
+        "value": 200.0,
+        "description": "Drone max speed in mm/s",
+    },
+    "DRONE_MAX_RADIUS_MM": {
+        "value": 300.0,
+        "description": "Max distance a drone can be commanded from the carrier in mm",
+    },
 }
 
 

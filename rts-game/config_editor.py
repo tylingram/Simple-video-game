@@ -22,7 +22,10 @@ DEFAULTS = {
     "DEFAULT_DRONE_DIAMETER_MM":  {"value": 3.0,    "description": "Diameter of a default drone in mm"},
     "DEFAULT_DRONE_VISION_MM":    {"value": 50.0,   "description": "Vision radius of a default drone in mm"},
     "STARTING_DRONES":            {"value": 5.0,    "description": "Number of drones at game start"},
-    "DRONE_START_RADIUS_MM":      {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
+    "DRONE_START_RADIUS_MM":       {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
+    "DEFAULT_DRONE_ACCELERATION": {"value": 400.0,  "description": "Drone acceleration in mm/s²"},
+    "DEFAULT_DRONE_MAX_SPEED":    {"value": 200.0,  "description": "Drone max speed in mm/s"},
+    "DRONE_MAX_RADIUS_MM":        {"value": 300.0,  "description": "Max distance a drone can be commanded from the carrier in mm"},
 }
 
 
@@ -153,6 +156,15 @@ def build_ui():
                     fg="#ff6b6b"
                 )
                 return
+
+        # Drone start radius must fit within max radius
+        if parsed["DRONE_START_RADIUS_MM"] > parsed["DRONE_MAX_RADIUS_MM"]:
+            status.config(
+                text=f"DRONE_START_RADIUS_MM ({parsed['DRONE_START_RADIUS_MM']}) "
+                     f"cannot exceed DRONE_MAX_RADIUS_MM ({parsed['DRONE_MAX_RADIUS_MM']})",
+                fg="#ff6b6b"
+            )
+            return
 
         # All good — commit and save
         for key, value in parsed.items():
