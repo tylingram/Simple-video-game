@@ -7,6 +7,7 @@ from hud import HUD
 from game_map import GameMap
 from fog_of_war import FogOfWar
 from units.carrier import Carrier
+from units.drone import create_formation
 import config as cfg
 
 WINDOWED_W = 1280
@@ -50,6 +51,7 @@ def main():
     game_map = GameMap()
     fog      = FogOfWar()
     carrier  = Carrier()
+    drones   = create_formation()
     launch_config_editor()
 
     # Track config.json modification time to reload when editor saves
@@ -66,6 +68,8 @@ def main():
             if mtime > last_mtime:
                 cfg.load_from_disk()
                 carrier.reset()
+                fog.reset()
+                drones = create_formation()
                 last_mtime = mtime
         except OSError:
             pass
@@ -95,10 +99,22 @@ def main():
         camera_x_mm = carrier.x - (settings.SCREEN_WIDTH / 2) / px_per_mm
         camera_y_mm = carrier.y - (game_h              / 2) / px_per_mm
 
+        # --- Build vision circles (carrier + all drones) ---
+        px_per_mm        = settings.DPI / 25.4
+        carrier_vis_px   = max(1, int(cfg.get("CARRIER_VISION_RADIUS_MM") * px_per_mm))
+        drone_vis_px     = max(1, int(cfg.get("DEFAULT_DRONE_VISION_MM")  * px_per_mm))
+        cx, cy           = settings.SCREEN_WIDTH // 2, game_h // 2
+        vision_circles   = [(cx, cy, carrier_vis_px)]
+        for drone in drones:
+            sx, sy = drone.screen_pos(game_h)
+            vision_circles.append((sx, sy, drone_vis_px))
+
         # --- Draw ---
         game_map.draw(screen, camera_x_mm, camera_y_mm, game_h)
         carrier.draw(screen, game_h)
-        fog.draw(screen, game_h)
+        for drone in drones:
+            drone.draw(screen, game_h)
+        fog.draw(screen, game_h, vision_circles)
         hud.draw(screen)
         pygame.display.flip()
 

@@ -4,6 +4,7 @@ Reads and writes config.json directly. No threading needed.
 Run this file directly or let main.py launch it automatically.
 """
 import json
+import math
 import tkinter as tk
 from pathlib import Path
 
@@ -18,6 +19,10 @@ DEFAULTS = {
     "MAP_WIDTH_MM":               {"value": 1000.0, "description": "Map width in mm"},
     "MAP_HEIGHT_MM":              {"value": 1000.0, "description": "Map height in mm"},
     "CARRIER_VISION_RADIUS_MM":   {"value": 50.0,   "description": "Radius of the Carrier's visible area in mm"},
+    "DEFAULT_DRONE_DIAMETER_MM":  {"value": 3.0,    "description": "Diameter of a default drone in mm"},
+    "DEFAULT_DRONE_VISION_MM":    {"value": 50.0,   "description": "Vision radius of a default drone in mm"},
+    "STARTING_DRONES":            {"value": 5.0,    "description": "Number of drones at game start"},
+    "DRONE_START_RADIUS_MM":      {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
 }
 
 
@@ -133,6 +138,21 @@ def build_ui():
                 fg="#ff6b6b"
             )
             return
+
+        # Drone overlap check (N >= 2 only — 1 drone can't overlap itself)
+        n = parsed["STARTING_DRONES"]
+        r = parsed["DRONE_START_RADIUS_MM"]
+        d = parsed["DEFAULT_DRONE_DIAMETER_MM"]
+        if n >= 2:
+            chord = 2 * r * math.sin(math.pi / n)
+            if chord < d:
+                min_r = math.ceil(d / (2 * math.sin(math.pi / n)))
+                status.config(
+                    text=f"Drones would overlap: {n} drones of {d}mm diameter "
+                         f"at radius {r}mm.\nMinimum radius needed: {min_r}mm",
+                    fg="#ff6b6b"
+                )
+                return
 
         # All good — commit and save
         for key, value in parsed.items():
