@@ -8,7 +8,12 @@ import config as cfg
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # FULLSCREEN + SCALED: game runs at 1280x720 internally, scaled to fill the screen.
+    # F11 toggles between fullscreen and windowed at any time.
+    screen = pygame.display.set_mode(
+        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        pygame.FULLSCREEN | pygame.SCALED
+    )
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
 
@@ -27,6 +32,8 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                if event.key == pygame.K_F11:
+                    pygame.display.toggle_fullscreen()
 
         # --- Layout (re-read every frame so config changes apply instantly) ---
         hud_h  = max(1, int(SCREEN_HEIGHT * cfg.get("HUD_SIZE") / 100))
