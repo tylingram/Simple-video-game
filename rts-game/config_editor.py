@@ -26,8 +26,8 @@ DEFAULTS = {
     "DEFAULT_DRONE_ACCELERATION": {"value": 400.0,  "description": "Drone acceleration in mm/s²"},
     "DEFAULT_DRONE_MAX_SPEED":    {"value": 200.0,  "description": "Drone max speed in mm/s"},
     "DRONE_MAX_RADIUS_MM":        {"value": 300.0,  "description": "Max distance a drone can be commanded from the carrier in mm"},
-    "ISLANDS_PER_MAP":            {"value": 3.0,    "description": "Number of random island obstacles on the map"},
-    "ISLAND_SIZE_MM":             {"value": 30.0,   "description": "Full width/diameter of each island in mm"},
+    "PONDS_PER_MAP":              {"value": 3.0,    "description": "Number of random ponds on the map"},
+    "POND_SIZE_MM":               {"value": 30.0,   "description": "Full width/diameter of each pond in mm"},
 }
 
 
