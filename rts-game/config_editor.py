@@ -92,20 +92,28 @@ def build_ui():
     )
 
     # ── Status label ─────────────────────────────────────────────────────────
-    status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3", font=("Courier", 9))
+    status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3",
+                      font=("Courier", 9), wraplength=320, justify="left")
 
     def on_save():
-        # Parse all values first
+        # Parse all values — must be positive integers
         errors = []
         parsed = {}
         for key, var in entries.items():
+            raw = var.get().strip()
             try:
-                parsed[key] = float(var.get())
+                val = float(raw)
+                if val != int(val):
+                    errors.append(f"{key}: must be a whole number (got {raw})")
+                elif val <= 0:
+                    errors.append(f"{key}: must be greater than 0 (got {raw})")
+                else:
+                    parsed[key] = int(val)
             except ValueError:
-                errors.append(f"{key}: must be a number")
+                errors.append(f"{key}: must be a positive integer (got '{raw}')")
 
         if errors:
-            status.config(text=" | ".join(errors), fg="#ff6b6b")
+            status.config(text="\n".join(errors), fg="#ff6b6b")
             return
 
         # Validation rules
