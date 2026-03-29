@@ -9,12 +9,10 @@ def main():
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
     hud = HUD()
-    elapsed = 0.0
 
     running = True
     while running:
-        dt = clock.tick(FPS) / 1000.0  # seconds since last frame
-        elapsed += dt
+        clock.tick(FPS)
 
         # --- Events ---
         for event in pygame.event.get():
@@ -25,7 +23,7 @@ def main():
                     running = False
 
         # --- Update ---
-        hud.update(elapsed)
+        hud.update(0)
 
         # --- Draw ---
         # Gameplay area — black
