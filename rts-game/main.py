@@ -5,6 +5,7 @@ import pygame
 import settings
 from hud import HUD
 from game_map import GameMap
+from fog_of_war import FogOfWar
 from units.carrier import Carrier
 import config as cfg
 
@@ -47,6 +48,7 @@ def main():
 
     hud      = HUD()
     game_map = GameMap()
+    fog      = FogOfWar()
     carrier  = Carrier()
     launch_config_editor()
 
@@ -96,6 +98,7 @@ def main():
         # --- Draw ---
         game_map.draw(screen, camera_x_mm, camera_y_mm, game_h)
         carrier.draw(screen, game_h)
+        fog.draw(screen, game_h)
         hud.draw(screen)
         pygame.display.flip()
 

@@ -39,6 +39,10 @@ _defaults = {
         "value": 1000.0,
         "description": "Map height in mm",
     },
+    "CARRIER_VISION_RADIUS_MM": {
+        "value": 50.0,
+        "description": "Radius of the Carrier's visible area in mm",
+    },
 }
 
 
