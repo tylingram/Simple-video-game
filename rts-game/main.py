@@ -1,7 +1,9 @@
+import os
+import sys
+import subprocess
 import pygame
 import settings
 from hud import HUD
-from config_window import ConfigWindow
 from units.carrier import Carrier
 import config as cfg
 
@@ -28,6 +30,12 @@ def make_screen(fullscreen):
         )
 
 
+def launch_config_editor():
+    """Open the config editor as a separate process so it can't affect the game."""
+    editor = os.path.join(os.path.dirname(__file__), "config_editor.py")
+    subprocess.Popen([sys.executable, editor])
+
+
 def main():
     pygame.init()
 
@@ -38,24 +46,34 @@ def main():
 
     hud     = HUD()
     carrier = Carrier()
-    ConfigWindow()   # opens the config panel in a background thread
+    launch_config_editor()
+
+    # Track config.json modification time to reload when editor saves
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    last_mtime  = os.path.getmtime(config_path) if os.path.exists(config_path) else 0
 
     running = True
     while running:
         clock.tick(settings.FPS)
 
+        # --- Reload config if editor saved changes ---
+        try:
+            mtime = os.path.getmtime(config_path)
+            if mtime > last_mtime:
+                cfg.load_from_disk()
+                last_mtime = mtime
+        except OSError:
+            pass
+
         # --- Events ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     fullscreen = not fullscreen
                     screen = make_screen(fullscreen)
-
             elif event.type == pygame.WINDOWRESIZED:
-                # Keep settings in sync when user resizes/maximizes the window
                 settings.SCREEN_WIDTH  = event.x
                 settings.SCREEN_HEIGHT = event.y
 

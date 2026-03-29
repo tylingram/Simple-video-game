@@ -60,6 +60,20 @@ def save_to_disk():
     _SAVE_FILE.write_text(json.dumps(snapshot, indent=2))
 
 
+def load_from_disk():
+    """Reload values from config.json (picks up changes from the config editor)."""
+    if not _SAVE_FILE.exists():
+        return
+    try:
+        saved = json.loads(_SAVE_FILE.read_text())
+        with _lock:
+            for key, value in saved.items():
+                if key in _data:
+                    _data[key]["value"] = value
+    except Exception:
+        pass
+
+
 def all_vars():
     """Returns a snapshot of all config entries."""
     with _lock:
