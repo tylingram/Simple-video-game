@@ -16,10 +16,17 @@ class Carrier:
     """
 
     def __init__(self):
-        # Start at center of map
-        self.x  = cfg.get("MAP_WIDTH_MM")  / 2   # world position in mm
+        self.x  = 0.0
+        self.y  = 0.0
+        self.vx = 0.0
+        self.vy = 0.0
+        self.reset()
+
+    def reset(self):
+        """Move carrier to map center and zero velocity. Called on init and config reload."""
+        self.x  = cfg.get("MAP_WIDTH_MM")  / 2
         self.y  = cfg.get("MAP_HEIGHT_MM") / 2
-        self.vx = 0.0                              # velocity in mm/s
+        self.vx = 0.0
         self.vy = 0.0
 
     def update(self, dt, keys):

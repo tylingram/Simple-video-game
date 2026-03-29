@@ -63,6 +63,7 @@ def main():
             mtime = os.path.getmtime(config_path)
             if mtime > last_mtime:
                 cfg.load_from_disk()
+                carrier.reset()
                 last_mtime = mtime
         except OSError:
             pass

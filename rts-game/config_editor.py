@@ -95,17 +95,41 @@ def build_ui():
     status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3", font=("Courier", 9))
 
     def on_save():
+        # Parse all values first
         errors = []
+        parsed = {}
         for key, var in entries.items():
             try:
-                data[key]["value"] = float(var.get())
+                parsed[key] = float(var.get())
             except ValueError:
-                errors.append(key)
+                errors.append(f"{key}: must be a number")
+
         if errors:
-            status.config(text=f"Invalid value: {', '.join(errors)}", fg="#ff6b6b")
-        else:
-            save(data)
-            status.config(text="Saved.", fg="#4ecca3")
+            status.config(text=" | ".join(errors), fg="#ff6b6b")
+            return
+
+        # Validation rules
+        if parsed["MAP_HEIGHT_MM"] <= parsed["CARRIER_HEIGHT_MM"]:
+            status.config(
+                text=f"MAP_HEIGHT_MM ({parsed['MAP_HEIGHT_MM']}) must be greater than "
+                     f"CARRIER_HEIGHT_MM ({parsed['CARRIER_HEIGHT_MM']})",
+                fg="#ff6b6b"
+            )
+            return
+
+        if parsed["MAP_WIDTH_MM"] <= parsed["CARRIER_WIDTH_MM"]:
+            status.config(
+                text=f"MAP_WIDTH_MM ({parsed['MAP_WIDTH_MM']}) must be greater than "
+                     f"CARRIER_WIDTH_MM ({parsed['CARRIER_WIDTH_MM']})",
+                fg="#ff6b6b"
+            )
+            return
+
+        # All good — commit and save
+        for key, value in parsed.items():
+            data[key]["value"] = value
+        save(data)
+        status.config(text="Saved. Carrier reset to map center.", fg="#4ecca3")
 
     tk.Button(
         root, text="  SAVE  ",
