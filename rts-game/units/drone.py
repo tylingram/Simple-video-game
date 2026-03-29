@@ -44,6 +44,6 @@ def create_formation():
     r = cfg.get("DRONE_START_RADIUS_MM")
     drones = []
     for i in range(n):
-        angle = 2 * math.pi * i / n
+        angle = -math.pi / 2 + 2 * math.pi * i / n   # start at top, symmetric around y-axis
         drones.append(Drone(r * math.cos(angle), r * math.sin(angle)))
     return drones
