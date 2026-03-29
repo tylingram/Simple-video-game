@@ -2,6 +2,7 @@ import pygame
 from settings import TITLE, SCREEN_WIDTH, SCREEN_HEIGHT, FPS, BLACK
 from hud import HUD
 from config_window import ConfigWindow
+from units.carrier import Carrier
 import config as cfg
 
 
@@ -11,7 +12,8 @@ def main():
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
 
-    hud = HUD()
+    hud     = HUD()
+    carrier = Carrier()
     ConfigWindow()   # opens the config panel in a background thread
 
     running = True
@@ -32,6 +34,7 @@ def main():
 
         # --- Draw ---
         pygame.draw.rect(screen, BLACK, (0, 0, SCREEN_WIDTH, game_h))
+        carrier.draw(screen)
         hud.draw(screen)
         pygame.display.flip()
 

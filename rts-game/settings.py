@@ -6,6 +6,9 @@ SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
 FPS           = 60
 
+# Display — used for mm → pixel conversions
+DPI = 96  # standard monitor DPI; adjust if your display differs
+
 # Colors
 BLACK      = (0,   0,   0)
 WHITE      = (255, 255, 255)

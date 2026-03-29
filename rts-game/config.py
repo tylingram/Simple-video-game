@@ -12,6 +12,14 @@ _data = {
         "value": 10.0,
         "description": "Changes the % of screen taken up by HUD",
     },
+    "CARRIER_WIDTH_MM": {
+        "value": 5.0,
+        "description": "Width of the Carrier unit in mm",
+    },
+    "CARRIER_HEIGHT_MM": {
+        "value": 10.0,
+        "description": "Height of the Carrier unit in mm",
+    },
 }
 
 
