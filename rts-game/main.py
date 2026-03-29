@@ -133,7 +133,51 @@ def main():
         keys = pygame.key.get_pressed()
         carrier.update(dt, keys)
         for drone in drones:
-            drone.update(dt)
+            drone.update(dt, drones)
+
+        # --- Hard drone separation (position constraint + wall slide) ---
+        # Runs after all drones have moved.  Guarantees no two drones overlap.
+        # Wall slide removes the velocity component pointing INTO the other
+        # drone so the blocked drone glides around rather than bouncing back.
+        d_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+        for _ in range(4):   # iterate to resolve chains of touching drones
+            for i in range(len(drones)):
+                for j in range(i + 1, len(drones)):
+                    a, b = drones[i], drones[j]
+                    dx = b.offset_x - a.offset_x
+                    dy = b.offset_y - a.offset_y
+                    dist_sq = dx * dx + dy * dy
+                    if dist_sq >= d_mm * d_mm or dist_sq == 0:
+                        continue
+                    dist = math.sqrt(dist_sq)
+                    nx, ny   = dx / dist, dy / dist
+                    overlap  = d_mm - dist
+                    # Determine how much to push each drone.
+                    # A drone sitting at its target (speed ≈ 0) acts like a
+                    # static obstacle — the moving drone absorbs the full push.
+                    a_speed = math.sqrt(a.vel_x * a.vel_x + a.vel_y * a.vel_y)
+                    b_speed = math.sqrt(b.vel_x * b.vel_x + b.vel_y * b.vel_y)
+                    if a_speed < 0.5 and b_speed >= 0.5:
+                        b.offset_x += nx * overlap
+                        b.offset_y += ny * overlap
+                    elif b_speed < 0.5 and a_speed >= 0.5:
+                        a.offset_x -= nx * overlap
+                        a.offset_y -= ny * overlap
+                    else:
+                        a.offset_x -= nx * overlap * 0.5
+                        a.offset_y -= ny * overlap * 0.5
+                        b.offset_x += nx * overlap * 0.5
+                        b.offset_y += ny * overlap * 0.5
+                    # Wall slide: zero out only the velocity component that
+                    # points INTO the other drone — no bounce, just sliding.
+                    a_n = a.vel_x * nx + a.vel_y * ny
+                    if a_n > 0:          # A moving toward B
+                        a.vel_x -= a_n * nx
+                        a.vel_y -= a_n * ny
+                    b_n = b.vel_x * nx + b.vel_y * ny
+                    if b_n < 0:          # B moving toward A
+                        b.vel_x -= b_n * nx
+                        b.vel_y -= b_n * ny
 
         # --- Camera ---
         px_per_mm   = settings.DPI / 25.4

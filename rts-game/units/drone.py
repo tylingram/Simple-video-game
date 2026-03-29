@@ -47,10 +47,17 @@ class Drone:
 
     # ── Physics update ────────────────────────────────────────────────────────
 
-    def update(self, dt):
-        """Advance offset toward target using arrive/decelerate physics."""
+    def update(self, dt, all_drones):
+        """Arrive steering + additive separation force.
+
+        Separation is applied as a direct velocity nudge (not blended into the
+        desired direction) so it generates lateral movement without fighting the
+        arrive force.  Hard position constraints and wall-slide are handled in
+        the main loop after all drones have moved.
+        """
         accel     = cfg.get("DEFAULT_DRONE_ACCELERATION")   # mm/s²
         max_speed = cfg.get("DEFAULT_DRONE_MAX_SPEED")       # mm/s
+        diameter  = cfg.get("DEFAULT_DRONE_DIAMETER_MM")     # mm
 
         dx   = self.target_x - self.offset_x
         dy   = self.target_y - self.offset_y
@@ -63,28 +70,45 @@ class Drone:
             self.vel_y    = 0.0
             return
 
-        speed = math.sqrt(self.vel_x ** 2 + self.vel_y ** 2)
+        # ── Arrive steering ───────────────────────────────────────────────────
+        # Desired speed: v² = 2·a·d so the drone decelerates to a stop exactly
+        # at the target.  Capped at max_speed.
+        desired_speed = min(max_speed, math.sqrt(2.0 * accel * dist))
+        nx = dx / dist
+        ny = dy / dist
+        desired_vx = nx * desired_speed
+        desired_vy = ny * desired_speed
 
-        # Stopping distance for current speed: v² / (2a)
-        stopping_dist = (speed ** 2) / (2 * accel) if accel > 0 else 0
+        dvx = desired_vx - self.vel_x
+        dvy = desired_vy - self.vel_y
+        dv  = math.sqrt(dvx * dvx + dvy * dvy)
+        max_dv = accel * dt
+        if dv > max_dv and dv > 0:
+            dvx = dvx / dv * max_dv
+            dvy = dvy / dv * max_dv
+        self.vel_x += dvx
+        self.vel_y += dvy
 
-        if stopping_dist >= dist:
-            # Begin deceleration
-            new_speed = max(0.0, speed - accel * dt)
-            if speed > 0:
-                scale      = new_speed / speed
-                self.vel_x *= scale
-                self.vel_y *= scale
-        else:
-            # Accelerate toward target
-            nx = dx / dist
-            ny = dy / dist
-            self.vel_x += nx * accel * dt
-            self.vel_y += ny * accel * dt
-            speed = math.sqrt(self.vel_x ** 2 + self.vel_y ** 2)
-            if speed > max_speed:
-                self.vel_x = self.vel_x / speed * max_speed
-                self.vel_y = self.vel_y / speed * max_speed
+        # ── Separation force ──────────────────────────────────────────────────
+        # Applied directly to velocity so it deflects the drone sideways around
+        # nearby drones without opposing the arrive force head-on.
+        avoid_r = diameter * 2.5
+        for other in all_drones:
+            if other is self:
+                continue
+            ox = self.offset_x - other.offset_x
+            oy = self.offset_y - other.offset_y
+            od = math.sqrt(ox * ox + oy * oy)
+            if 0 < od < avoid_r:
+                strength = (avoid_r - od) / avoid_r   # 1 at contact → 0 at avoid_r
+                self.vel_x += (ox / od) * strength * accel * dt
+                self.vel_y += (oy / od) * strength * accel * dt
+
+        # Clamp to max speed after separation is applied
+        speed = math.sqrt(self.vel_x * self.vel_x + self.vel_y * self.vel_y)
+        if speed > max_speed and speed > 0:
+            self.vel_x = self.vel_x / speed * max_speed
+            self.vel_y = self.vel_y / speed * max_speed
 
         self.offset_x += self.vel_x * dt
         self.offset_y += self.vel_y * dt

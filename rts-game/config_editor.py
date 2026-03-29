@@ -54,7 +54,7 @@ def build_ui():
     root.resizable(False, False)
     root.configure(bg="#1a1a2e")
 
-    # ── Header ──────────────────────────────────────────────────────────────
+    # ── Header (fixed, outside scroll area) ─────────────────────────────────
     tk.Label(
         root, text="Game Configuration",
         bg="#1a1a2e", fg="#4ecca3",
@@ -65,19 +65,47 @@ def build_ui():
         row=1, column=0, columnspan=2, sticky="ew", padx=20
     )
 
-    # ── Variable rows ────────────────────────────────────────────────────────
+    # ── Scrollable canvas area ───────────────────────────────────────────────
+    scroll_frame = tk.Frame(root, bg="#1a1a2e")
+    scroll_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
+
+    canvas = tk.Canvas(scroll_frame, bg="#1a1a2e", highlightthickness=0, width=420, height=420)
+    scrollbar = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    inner = tk.Frame(canvas, bg="#1a1a2e")
+    inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def on_inner_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def on_canvas_configure(event):
+        canvas.itemconfig(inner_window, width=event.width)
+
+    inner.bind("<Configure>", on_inner_configure)
+    canvas.bind("<Configure>", on_canvas_configure)
+
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+    # ── Variable rows (inside scrollable frame) ──────────────────────────────
     entries = {}
-    row = 2
+    row = 0
     for key, meta in data.items():
         tk.Label(
-            root, text=key,
+            inner, text=key,
             bg="#1a1a2e", fg="#ffffff",
             font=("Courier", 11, "bold"), anchor="w"
         ).grid(row=row, column=0, sticky="w", padx=20, pady=(10, 0))
 
         var = tk.StringVar(value=str(meta["value"]))
         tk.Entry(
-            root, textvariable=var, width=10,
+            inner, textvariable=var, width=10,
             bg="#0f0f23", fg="#4ecca3",
             insertbackground="white",
             font=("Courier", 11),
@@ -89,18 +117,21 @@ def build_ui():
         entries[key] = var
 
         tk.Label(
-            root, text=meta["description"],
+            inner, text=meta["description"],
             bg="#1a1a2e", fg="#7a7a9a",
             font=("Courier", 9), anchor="w"
         ).grid(row=row + 1, column=0, columnspan=2, sticky="w", padx=20, pady=(2, 0))
         row += 2
 
-    # ── Divider ──────────────────────────────────────────────────────────────
+    # Bottom padding inside scroll area
+    tk.Frame(inner, bg="#1a1a2e", height=10).grid(row=row, column=0, columnspan=2)
+
+    # ── Divider (fixed, outside scroll area) ─────────────────────────────────
     tk.Frame(root, bg="#3a3a5a", height=1).grid(
-        row=row, column=0, columnspan=2, sticky="ew", padx=20, pady=12
+        row=3, column=0, columnspan=2, sticky="ew", padx=20, pady=12
     )
 
-    # ── Status label ─────────────────────────────────────────────────────────
+    # ── Status label (fixed) ─────────────────────────────────────────────────
     status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3",
                       font=("Courier", 9), wraplength=320, justify="left")
 
@@ -180,9 +211,9 @@ def build_ui():
         relief="flat", cursor="hand2",
         padx=10, pady=6,
         activebackground="#3ab892", activeforeground="#0f0f23"
-    ).grid(row=row + 1, column=0, columnspan=2, padx=20, sticky="ew")
+    ).grid(row=4, column=0, columnspan=2, padx=20, sticky="ew")
 
-    status.grid(row=row + 2, column=0, columnspan=2, pady=(6, 14))
+    status.grid(row=5, column=0, columnspan=2, pady=(6, 14))
 
     root.mainloop()
 
