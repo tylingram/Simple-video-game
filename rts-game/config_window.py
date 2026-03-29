@@ -103,4 +103,5 @@ class ConfigWindow:
         if errors:
             status_label.config(text=f"Invalid value: {', '.join(errors)}", fg="#ff6b6b")
         else:
+            cfg.save_to_disk()
             status_label.config(text="Saved — applied to game.", fg="#4ecca3")
