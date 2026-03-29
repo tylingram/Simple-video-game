@@ -1,38 +1,95 @@
 """
 Random island obstacles — impassable by carrier, passable by drones.
 Islands are regenerated every time config is saved/reloaded.
-Collision is shape-accurate: AABB for rect, circle test for circle, SAT for triangle.
+
+Visuals: organic blobs with a sandy coast ring and smooth anti-aliased edges.
+Collision: SAT against the actual polygon vertices (kept nearly-convex via smoothing).
 """
 import random
 import math
 import pygame
+import pygame.gfxdraw
 import settings
 import config as cfg
 
-ISLAND_COLOR  = (60,  40,  20)   # dark earth
-ISLAND_BORDER = (110, 75,  40)   # lighter brown outline
+ISLAND_LAND  = (45,  100,  45)   # land green
+ISLAND_COAST = (190, 160,  95)   # sandy beach ring
 
 
 # ---------------------------------------------------------------------------
-# SAT helper for convex polygon vs AABB
+# Polygon generation
+# ---------------------------------------------------------------------------
+
+def _make_verts(cx, cy, half, style):
+    """
+    Generate world-space island vertices as an organic blob.
+    style 0 = round,  1 = elongated,  2 = irregular.
+    All variants stay nearly convex so SAT collision is reliable.
+    """
+    n = 22   # control points
+
+    if style == 0:
+        # Round — tight radial variation
+        radii = [half * random.uniform(0.78, 1.00) for _ in range(n)]
+
+    elif style == 1:
+        # Elongated — ellipse base with gentle noise
+        stretch    = random.uniform(1.35, 1.75)
+        angle_off  = random.uniform(0, math.pi)
+        radii = []
+        for i in range(n):
+            a = 2 * math.pi * i / n + angle_off
+            # Polar ellipse radius
+            r_e = (half * stretch) / math.sqrt(
+                (stretch * math.cos(a)) ** 2 + math.sin(a) ** 2
+            )
+            r_e = min(r_e, half * stretch)   # cap so it stays sane
+            radii.append(r_e * random.uniform(0.82, 1.00))
+
+    else:
+        # Irregular — wider variation but still smoothed into a blob
+        radii = [half * random.uniform(0.60, 1.00) for _ in range(n)]
+
+    # Gaussian-weighted smoothing — removes spikes, keeps organic feel
+    for _ in range(6):
+        w = [0.05, 0.20, 0.50, 0.20, 0.05]
+        smoothed = []
+        for i in range(n):
+            val = sum(w[k] * radii[(i + k - 2) % n] for k in range(5))
+            smoothed.append(val)
+        radii = smoothed
+
+    verts = []
+    for i in range(n):
+        angle = 2 * math.pi * i / n
+        verts.append((cx + radii[i] * math.cos(angle),
+                      cy + radii[i] * math.sin(angle)))
+    return verts
+
+
+def _scale_verts(verts, cx, cy, scale):
+    """Scale polygon outward from its centre (for beach ring)."""
+    return [(cx + (x - cx) * scale, cy + (y - cy) * scale)
+            for x, y in verts]
+
+
+# ---------------------------------------------------------------------------
+# SAT collision helper
 # ---------------------------------------------------------------------------
 
 def _sat_push(carrier_x, carrier_y, box_verts, poly_verts):
     """
-    Separating Axis Theorem: convex polygon vs AABB.
-    Returns (push_x, push_y) to move the box OUT of the polygon,
-    or (0, 0) if no overlap.
-    Axes tested: world X/Y + each polygon edge normal.
+    SAT between carrier AABB (box_verts) and a convex polygon (poly_verts).
+    Returns (push_x, push_y) to move the carrier out, or (0, 0) if no overlap.
     """
     poly_cx = sum(v[0] for v in poly_verts) / len(poly_verts)
     poly_cy = sum(v[1] for v in poly_verts) / len(poly_verts)
 
-    # Build axes: world-aligned + polygon edge normals
     axes = [(1.0, 0.0), (0.0, 1.0)]
-    n = len(poly_verts)
-    for i in range(n):
+    m = len(poly_verts)
+    for i in range(m):
         x1, y1 = poly_verts[i]
-        x2, y2 = poly_verts[(i + 1) % n]
+        x2, y2 = poly_verts[(i + 1) % m]
         ex, ey = x2 - x1, y2 - y1
         length = math.hypot(ex, ey)
         if length > 0:
@@ -42,19 +99,18 @@ def _sat_push(carrier_x, carrier_y, box_verts, poly_verts):
     mtv = (0.0, 0.0)
 
     for ax, ay in axes:
-        box_projs = [ax * x + ay * y for x, y in box_verts]
-        box_min, box_max = min(box_projs), max(box_projs)
-
+        box_projs  = [ax * x + ay * y for x, y in box_verts]
         poly_projs = [ax * x + ay * y for x, y in poly_verts]
+
+        box_min,  box_max  = min(box_projs),  max(box_projs)
         poly_min, poly_max = min(poly_projs), max(poly_projs)
 
         overlap = min(box_max, poly_max) - max(box_min, poly_min)
         if overlap <= 0:
-            return 0.0, 0.0   # separating axis found — no collision
+            return 0.0, 0.0
 
         if overlap < min_overlap:
             min_overlap = overlap
-            # Push box away from poly centre
             box_proj  = ax * carrier_x + ay * carrier_y
             poly_proj = ax * poly_cx   + ay * poly_cy
             sign = -1.0 if box_proj < poly_proj else 1.0
@@ -63,120 +119,70 @@ def _sat_push(carrier_x, carrier_y, box_verts, poly_verts):
     return mtv
 
 
+# ---------------------------------------------------------------------------
+# Island
+# ---------------------------------------------------------------------------
+
 class Island:
-    """A single island obstacle.  shape is 'rect', 'circle', or 'triangle'."""
 
-    def __init__(self, cx, cy, half, shape):
-        self.cx    = cx     # world-space centre x in mm
-        self.cy    = cy     # world-space centre y in mm
-        self.half  = half   # half-extent / radius in mm
-        self.shape = shape  # 'rect' | 'circle' | 'triangle'
-
-    def _tri_verts(self):
-        """Triangle vertices (world space): equilateral-ish pointing upward."""
-        return [
-            (self.cx,             self.cy - self.half),   # top
-            (self.cx - self.half, self.cy + self.half),   # bottom-left
-            (self.cx + self.half, self.cy + self.half),   # bottom-right
-        ]
+    def __init__(self, cx, cy, half, style):
+        self.cx    = cx
+        self.cy    = cy
+        self.half  = half
+        self.verts = _make_verts(cx, cy, half, style)
+        # Furthest vertex distance * 1.15 for the beach ring — used for cull check
+        self.cull_radius = max(math.hypot(x - cx, y - cy)
+                               for x, y in self.verts) * 1.15
 
     # ------------------------------------------------------------------
     # Collision
     # ------------------------------------------------------------------
 
     def collide_carrier(self, carrier):
-        """
-        Shape-accurate collision.
-        Returns (push_x, push_y) in mm to move carrier out of the island.
-        Returns (0, 0) if no overlap.
-        """
         half_w = cfg.get("CARRIER_WIDTH_MM")  / 2
         half_h = cfg.get("CARRIER_HEIGHT_MM") / 2
-
         cl = carrier.x - half_w;  cr = carrier.x + half_w
         ct = carrier.y - half_h;  cb = carrier.y + half_h
-
-        if self.shape == 'rect':
-            # AABB vs AABB
-            ox = min(cr, self.cx + self.half) - max(cl, self.cx - self.half)
-            oy = min(cb, self.cy + self.half) - max(ct, self.cy - self.half)
-            if ox <= 0 or oy <= 0:
-                return 0.0, 0.0
-            if ox < oy:
-                return (-ox if carrier.x < self.cx else ox), 0.0
-            else:
-                return 0.0, (-oy if carrier.y < self.cy else oy)
-
-        elif self.shape == 'circle':
-            # Carrier AABB vs circle: find closest point on carrier box to circle centre
-            closest_x = max(cl, min(self.cx, cr))
-            closest_y = max(ct, min(self.cy, cb))
-            dx = closest_x - self.cx
-            dy = closest_y - self.cy
-            dist_sq = dx * dx + dy * dy
-
-            if dist_sq >= self.half * self.half:
-                return 0.0, 0.0
-
-            if dist_sq == 0:
-                # Carrier centre is inside the circle — push out to nearest side
-                gaps = [
-                    (cr - (self.cx - self.half),  1.0, 0.0),   # overlap from left
-                    ((self.cx + self.half) - cl, -1.0, 0.0),   # overlap from right
-                    (cb - (self.cy - self.half),  0.0, 1.0),   # overlap from top
-                    ((self.cy + self.half) - ct,  0.0, -1.0),  # overlap from bottom
-                ]
-                ov, sx, sy = min(gaps, key=lambda t: t[0])
-                return sx * ov, sy * ov
-
-            dist = math.sqrt(dist_sq)
-            overlap = self.half - dist
-            # Push carrier so its closest edge sits exactly on the circle boundary
-            return (dx / dist) * overlap, (dy / dist) * overlap
-
-        else:  # triangle — SAT
-            box_verts = [(cl, ct), (cr, ct), (cr, cb), (cl, cb)]
-            return _sat_push(carrier.x, carrier.y, box_verts, self._tri_verts())
+        box_verts = [(cl, ct), (cr, ct), (cr, cb), (cl, cb)]
+        return _sat_push(carrier.x, carrier.y, box_verts, self.verts)
 
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
 
     def draw(self, surface, camera_x_mm, camera_y_mm, game_h):
-        px   = settings.DPI / 25.4
-        h_px = max(2, int(self.half * px))
-        sx   = int((self.cx - camera_x_mm) * px)
-        sy   = int((self.cy - camera_y_mm) * px)
+        px    = settings.DPI / 25.4
+        cull  = int(self.cull_radius * px)
+        sx    = int((self.cx - camera_x_mm) * px)
+        sy    = int((self.cy - camera_y_mm) * px)
 
-        if sx + h_px < 0 or sx - h_px > settings.SCREEN_WIDTH:
+        if sx + cull < 0 or sx - cull > settings.SCREEN_WIDTH:
             return
-        if sy + h_px < 0 or sy - h_px > game_h:
+        if sy + cull < 0 or sy - cull > game_h:
             return
 
-        if self.shape == 'rect':
-            rect = pygame.Rect(sx - h_px, sy - h_px, h_px * 2, h_px * 2)
-            pygame.draw.rect(surface, ISLAND_COLOR,  rect)
-            pygame.draw.rect(surface, ISLAND_BORDER, rect, 1)
+        def to_screen(wx, wy):
+            return (int((wx - camera_x_mm) * px),
+                    int((wy - camera_y_mm) * px))
 
-        elif self.shape == 'circle':
-            pygame.draw.circle(surface, ISLAND_COLOR,  (sx, sy), h_px)
-            pygame.draw.circle(surface, ISLAND_BORDER, (sx, sy), h_px, 1)
+        # Sandy beach ring (polygon scaled outward ~15%)
+        coast_verts = [to_screen(self.cx + (x - self.cx) * 1.15,
+                                  self.cy + (y - self.cy) * 1.15)
+                       for x, y in self.verts]
+        pygame.gfxdraw.filled_polygon(surface, coast_verts, ISLAND_COAST)
+        pygame.gfxdraw.aapolygon(surface, coast_verts, ISLAND_COAST)
 
-        elif self.shape == 'triangle':
-            pts = [
-                (sx,        sy - h_px),
-                (sx - h_px, sy + h_px),
-                (sx + h_px, sy + h_px),
-            ]
-            pygame.draw.polygon(surface, ISLAND_COLOR,  pts)
-            pygame.draw.polygon(surface, ISLAND_BORDER, pts, 1)
+        # Land fill
+        land_verts = [to_screen(x, y) for x, y in self.verts]
+        pygame.gfxdraw.filled_polygon(surface, land_verts, ISLAND_LAND)
+        pygame.gfxdraw.aapolygon(surface, land_verts, ISLAND_LAND)
 
 
 # ---------------------------------------------------------------------------
 # Islands manager
 # ---------------------------------------------------------------------------
 
-SHAPES = ['rect', 'circle', 'triangle']
+STYLES = [0, 1, 2]   # round, elongated, irregular
 
 
 class Islands:
@@ -186,7 +192,6 @@ class Islands:
         self.reset()
 
     def reset(self):
-        """Randomly place islands, avoiding the carrier spawn (map centre)."""
         self.islands = []
         n     = int(cfg.get("ISLANDS_PER_MAP"))
         half  = cfg.get("ISLAND_SIZE_MM") / 2
@@ -195,21 +200,21 @@ class Islands:
 
         carrier_x     = map_w / 2
         carrier_y     = map_h / 2
-        carrier_clear = half + math.hypot(cfg.get("CARRIER_WIDTH_MM"),
-                                          cfg.get("CARRIER_HEIGHT_MM"))
+        carrier_clear = half * 1.15 + math.hypot(cfg.get("CARRIER_WIDTH_MM"),
+                                                  cfg.get("CARRIER_HEIGHT_MM"))
 
         placed = 0
         attempts = 0
         while placed < n and attempts < 2000:
             attempts += 1
-            shape = SHAPES[placed % len(SHAPES)]
-            cx = random.uniform(half, map_w - half)
-            cy = random.uniform(half, map_h - half)
+            style = STYLES[placed % len(STYLES)]
+            cx = random.uniform(half * 1.15, map_w - half * 1.15)
+            cy = random.uniform(half * 1.15, map_h - half * 1.15)
 
             if math.hypot(cx - carrier_x, cy - carrier_y) < carrier_clear:
                 continue
 
-            self.islands.append(Island(cx, cy, half, shape))
+            self.islands.append(Island(cx, cy, half, style))
             placed += 1
 
     def draw(self, surface, camera_x_mm, camera_y_mm, game_h):
@@ -217,7 +222,6 @@ class Islands:
             island.draw(surface, camera_x_mm, camera_y_mm, game_h)
 
     def resolve_carrier(self, carrier):
-        """Push carrier out of any overlapping island and zero velocity on pushed axes."""
         for island in self.islands:
             px, py = island.collide_carrier(carrier)
             if px:
