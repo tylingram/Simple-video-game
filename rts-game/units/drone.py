@@ -32,11 +32,7 @@ class Drone:
     # ── Commanding ────────────────────────────────────────────────────────────
 
     def set_target(self, tx_mm, ty_mm):
-        """
-        Set target carrier-relative offset, clamping to DRONE_MAX_RADIUS_MM.
-        If the requested point is outside the max radius, it is projected onto
-        the circle along the carrier → target line.
-        """
+        """Set target carrier-relative offset, clamped to max radius."""
         max_r = cfg.get("DRONE_MAX_RADIUS_MM")
         d = math.sqrt(tx_mm ** 2 + ty_mm ** 2)
         if d > max_r and d > 0:
@@ -47,17 +43,15 @@ class Drone:
 
     # ── Physics update ────────────────────────────────────────────────────────
 
-    def update(self, dt, all_drones):
-        """Arrive steering + additive separation force.
+    def update(self, dt, carrier_vx=0.0, carrier_vy=0.0):
+        """Arrive steering toward target.  Stops cleanly at destination.
 
-        Separation is applied as a direct velocity nudge (not blended into the
-        desired direction) so it generates lateral movement without fighting the
-        arrive force.  Hard position constraints and wall-slide are handled in
-        the main loop after all drones have moved.
+        vel_x/y are carrier-relative.  carrier_vx/vy are used only for the
+        world-space speed clamp so the limit is enforced relative to the map.
+        Collision stopping is handled by the constraint pass in main.py.
         """
         accel     = cfg.get("DEFAULT_DRONE_ACCELERATION")   # mm/s²
         max_speed = cfg.get("DEFAULT_DRONE_MAX_SPEED")       # mm/s
-        diameter  = cfg.get("DEFAULT_DRONE_DIAMETER_MM")     # mm
 
         dx   = self.target_x - self.offset_x
         dy   = self.target_y - self.offset_y
@@ -70,14 +64,12 @@ class Drone:
             self.vel_y    = 0.0
             return
 
-        # ── Arrive steering ───────────────────────────────────────────────────
-        # Desired speed: v² = 2·a·d so the drone decelerates to a stop exactly
-        # at the target.  Capped at max_speed.
+        arrive_nx = dx / dist
+        arrive_ny = dy / dist
+
         desired_speed = min(max_speed, math.sqrt(2.0 * accel * dist))
-        nx = dx / dist
-        ny = dy / dist
-        desired_vx = nx * desired_speed
-        desired_vy = ny * desired_speed
+        desired_vx    = arrive_nx * desired_speed
+        desired_vy    = arrive_ny * desired_speed
 
         dvx = desired_vx - self.vel_x
         dvy = desired_vy - self.vel_y
@@ -89,26 +81,14 @@ class Drone:
         self.vel_x += dvx
         self.vel_y += dvy
 
-        # ── Separation force ──────────────────────────────────────────────────
-        # Applied directly to velocity so it deflects the drone sideways around
-        # nearby drones without opposing the arrive force head-on.
-        avoid_r = diameter * 2.5
-        for other in all_drones:
-            if other is self:
-                continue
-            ox = self.offset_x - other.offset_x
-            oy = self.offset_y - other.offset_y
-            od = math.sqrt(ox * ox + oy * oy)
-            if 0 < od < avoid_r:
-                strength = (avoid_r - od) / avoid_r   # 1 at contact → 0 at avoid_r
-                self.vel_x += (ox / od) * strength * accel * dt
-                self.vel_y += (oy / od) * strength * accel * dt
-
-        # Clamp to max speed after separation is applied
-        speed = math.sqrt(self.vel_x * self.vel_x + self.vel_y * self.vel_y)
-        if speed > max_speed and speed > 0:
-            self.vel_x = self.vel_x / speed * max_speed
-            self.vel_y = self.vel_y / speed * max_speed
+        # Enforce max speed in world-space (map-relative).
+        # Convert carrier-relative vel → world, clamp, convert back.
+        world_vx  = self.vel_x + carrier_vx
+        world_vy  = self.vel_y + carrier_vy
+        world_spd = math.sqrt(world_vx ** 2 + world_vy ** 2)
+        if world_spd > max_speed and world_spd > 0:
+            self.vel_x = world_vx / world_spd * max_speed - carrier_vx
+            self.vel_y = world_vy / world_spd * max_speed - carrier_vy
 
         self.offset_x += self.vel_x * dt
         self.offset_y += self.vel_y * dt
