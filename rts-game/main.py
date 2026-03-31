@@ -61,6 +61,55 @@ def launch_config_editor():
     subprocess.Popen([sys.executable, editor])
 
 
+def draw_overlay(surface, state, kills=0):
+    """Semi-transparent overlay for pause / win / loss screens."""
+    overlay = pygame.Surface(
+        (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT), pygame.SRCALPHA
+    )
+    overlay.fill((0, 0, 0, 160))
+    surface.blit(overlay, (0, 0))
+    cx, cy     = settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT // 2
+    big_font   = pygame.font.Font(None, 72)
+    small_font = pygame.font.Font(None, 36)
+    if state == 'paused':
+        title = big_font.render("PAUSED", True, (220, 220, 100))
+        hint  = small_font.render("P  —  resume", True, (180, 180, 180))
+        surface.blit(title, title.get_rect(center=(cx, cy - 20)))
+        surface.blit(hint,  hint.get_rect(center=(cx, cy + 40)))
+    else:
+        if state == 'won':
+            title = big_font.render("VICTORY",  True, (100, 255, 120))
+        else:
+            title = big_font.render("DEFEATED", True, (255, 80, 80))
+        kills_surf = small_font.render(
+            f"Enemies destroyed: {kills}", True, (200, 200, 200)
+        )
+        hint = small_font.render("ENTER  —  play again", True, (180, 180, 180))
+        surface.blit(title,      title.get_rect(center=(cx, cy - 40)))
+        surface.blit(kills_surf, kills_surf.get_rect(center=(cx, cy + 20)))
+        surface.blit(hint,       hint.get_rect(center=(cx, cy + 60)))
+
+
+def _reset_game(game_map, ponds, fog, carrier):
+    """Reinitialise all mutable game state.
+    Returns (enemy_carriers, enemy_drones_list, drones, missiles)."""
+    game_map.reset()
+    ponds.reset()
+    fog.reset()
+    n_enemies = int(cfg.get("ENEMY_CARRIERS"))
+    spawn     = game_map.edge_spawn_points(
+        1 + n_enemies, cfg.get("DRONE_MAX_RADIUS_MM"), ponds
+    )
+    carrier.reset()
+    carrier.x, carrier.y = spawn[0]
+    enemy_drones_list = [create_formation() for _ in range(n_enemies)]
+    enemy_carriers    = [EnemyCarrier(sx, sy, ed)
+                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+    drones   = create_formation()
+    missiles = []
+    return enemy_carriers, enemy_drones_list, drones, missiles
+
+
 def resolve_carrier_collisions(carriers):
     """
     AABB collision between every pair of carriers.
@@ -186,7 +235,10 @@ def main():
                          for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
     drones            = create_formation()
     launch_config_editor()
-    missiles = []
+    missiles   = []
+    game_state = 'playing'  # 'playing' | 'won' | 'lost'
+    paused     = False
+    kills      = 0
 
     # Track config.json modification time to reload when editor saves
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
@@ -212,7 +264,10 @@ def main():
                 enemy_carriers    = [EnemyCarrier(sx, sy, ed)
                                      for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
                 drones            = create_formation()
-                missiles = []
+                missiles   = []
+                game_state = 'playing'
+                paused     = False
+                kills      = 0
                 fog.reset()
                 last_mtime = mtime
         except OSError:
@@ -231,12 +286,36 @@ def main():
                 if event.key == pygame.K_F11:
                     fullscreen = not fullscreen
                     screen = make_screen(fullscreen)
+                elif event.key == pygame.K_p:
+                    if game_state == 'playing':
+                        paused = not paused
+                elif event.key == pygame.K_RETURN and game_state != 'playing':
+                    (enemy_carriers, enemy_drones_list,
+                     drones, missiles) = _reset_game(game_map, ponds, fog, carrier)
+                    kills      = 0
+                    game_state = 'playing'
+                    paused     = False
+                elif event.key == pygame.K_a and game_state == 'playing' and not paused:
+                    all_sel = all(d.selected for d in drones) if drones else False
+                    for d in drones:
+                        d.selected = not all_sel
+                elif event.key == pygame.K_r and game_state == 'playing' and not paused:
+                    n = len(drones)
+                    if n > 0:
+                        r_mm = cfg.get("DRONE_START_RADIUS_MM")
+                        for i, d in enumerate(drones):
+                            angle = -math.pi / 2 + 2 * math.pi * i / n
+                            d.set_target(r_mm * math.cos(angle),
+                                         r_mm * math.sin(angle))
+                        for d in drones:
+                            d.selected = False
 
             elif event.type == pygame.WINDOWRESIZED:
                 settings.SCREEN_WIDTH  = event.x
                 settings.SCREEN_HEIGHT = event.y
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                  and game_state == 'playing' and not paused):
                 mx, my = event.pos
                 if my < game_h:   # ignore clicks on HUD
                     hit = next((d for d in drones
@@ -257,123 +336,132 @@ def main():
                             sel.set_target(ox, oy)
 
         # --- Update ---
-        keys = pygame.key.get_pressed()
-        carrier.update(dt, keys)
-        game_map.resolve_carrier(carrier)
-        ponds.resolve_carrier(carrier)
-        for ec in enemy_carriers:
-            ec.update(dt, carrier.x, carrier.y)
-            game_map.resolve_carrier(ec)
-            ponds.resolve_carrier(ec)
-        resolve_carrier_collisions([carrier] + enemy_carriers)
-        for ec, ed in zip(enemy_carriers, enemy_drones_list):
-            for drone in ed:
-                drone.update(dt, ec.vx, ec.vy)
-        for drone in drones:
-            drone.update(dt, carrier.vx, carrier.vy)
+        if game_state == 'playing' and not paused:
+            keys = pygame.key.get_pressed()
+            carrier.update(dt, keys)
+            game_map.resolve_carrier(carrier)
+            ponds.resolve_carrier(carrier)
+            for ec in enemy_carriers:
+                ec.update(dt, carrier.x, carrier.y)
+                game_map.resolve_carrier(ec)
+                ponds.resolve_carrier(ec)
+            resolve_carrier_collisions([carrier] + enemy_carriers)
+            for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                for drone in ed:
+                    drone.update(dt, ec.vx, ec.vy)
+            for drone in drones:
+                drone.update(dt, carrier.vx, carrier.vy)
 
-        # --- Drone collision: hard stop on contact ---
-        # Moving drone hits another drone → pushed back to non-overlapping
-        # position and fully stopped (vel zeroed, target snapped to position).
-        # The stationary drone is never moved.  If two drones are both moving
-        # and collide, both stop.
-        d_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
-        for i in range(len(drones)):
-            for j in range(i + 1, len(drones)):
-                a, b = drones[i], drones[j]
-                ddx = b.offset_x - a.offset_x
-                ddy = b.offset_y - a.offset_y
-                dist_sq = ddx * ddx + ddy * ddy
-                if dist_sq >= d_mm * d_mm or dist_sq == 0:
-                    continue
-                dist_ab = math.sqrt(dist_sq)
-                nx, ny  = ddx / dist_ab, ddy / dist_ab   # unit vector A→B
-                overlap = d_mm - dist_ab
-                a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
-                b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
-                if a_moving and not b_moving:
-                    # A ran into stationary B — push A back, stop A
-                    a.offset_x -= nx * overlap
-                    a.offset_y -= ny * overlap
-                    a.vel_x = 0.0
-                    a.vel_y = 0.0
-                    a.target_x = a.offset_x
-                    a.target_y = a.offset_y
-                elif b_moving and not a_moving:
-                    # B ran into stationary A — push B back, stop B
-                    b.offset_x += nx * overlap
-                    b.offset_y += ny * overlap
-                    b.vel_x = 0.0
-                    b.vel_y = 0.0
-                    b.target_x = b.offset_x
-                    b.target_y = b.offset_y
-                else:
-                    # Both moving — push apart equally, stop both
-                    a.offset_x -= nx * overlap * 0.5
-                    a.offset_y -= ny * overlap * 0.5
-                    b.offset_x += nx * overlap * 0.5
-                    b.offset_y += ny * overlap * 0.5
-                    a.vel_x = 0.0;  a.vel_y = 0.0
-                    b.vel_x = 0.0;  b.vel_y = 0.0
-                    a.target_x = a.offset_x;  a.target_y = a.offset_y
-                    b.target_x = b.offset_x;  b.target_y = b.offset_y
+            # --- Drone collision: hard stop on contact ---
+            # Moving drone hits another drone → pushed back to non-overlapping
+            # position and fully stopped (vel zeroed, target snapped to position).
+            # The stationary drone is never moved.  If two drones are both moving
+            # and collide, both stop.
+            d_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+            for i in range(len(drones)):
+                for j in range(i + 1, len(drones)):
+                    a, b = drones[i], drones[j]
+                    ddx = b.offset_x - a.offset_x
+                    ddy = b.offset_y - a.offset_y
+                    dist_sq = ddx * ddx + ddy * ddy
+                    if dist_sq >= d_mm * d_mm or dist_sq == 0:
+                        continue
+                    dist_ab = math.sqrt(dist_sq)
+                    nx, ny  = ddx / dist_ab, ddy / dist_ab   # unit vector A→B
+                    overlap = d_mm - dist_ab
+                    a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
+                    b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
+                    if a_moving and not b_moving:
+                        # A ran into stationary B — push A back, stop A
+                        a.offset_x -= nx * overlap
+                        a.offset_y -= ny * overlap
+                        a.vel_x = 0.0
+                        a.vel_y = 0.0
+                        a.target_x = a.offset_x
+                        a.target_y = a.offset_y
+                    elif b_moving and not a_moving:
+                        # B ran into stationary A — push B back, stop B
+                        b.offset_x += nx * overlap
+                        b.offset_y += ny * overlap
+                        b.vel_x = 0.0
+                        b.vel_y = 0.0
+                        b.target_x = b.offset_x
+                        b.target_y = b.offset_y
+                    else:
+                        # Both moving — push apart equally, stop both
+                        a.offset_x -= nx * overlap * 0.5
+                        a.offset_y -= ny * overlap * 0.5
+                        b.offset_x += nx * overlap * 0.5
+                        b.offset_y += ny * overlap * 0.5
+                        a.vel_x = 0.0;  a.vel_y = 0.0
+                        b.vel_x = 0.0;  b.vel_y = 0.0
+                        a.target_x = a.offset_x;  a.target_y = a.offset_y
+                        b.target_x = b.offset_x;  b.target_y = b.offset_y
 
-        # --- Combat ---
-        # Build per-team target lists: (unit, carrier_ref_or_None)
-        enemy_targets  = ([(ec, None) for ec in enemy_carriers] +
-                          [(d, ec)
-                           for ec, ed in zip(enemy_carriers, enemy_drones_list)
-                           for d in ed])
-        player_targets = ([(carrier, None)] +
-                          [(d, carrier) for d in drones])
+            # --- Combat ---
+            # Build per-team target lists: (unit, carrier_ref_or_None)
+            enemy_targets  = ([(ec, None) for ec in enemy_carriers] +
+                              [(d, ec)
+                               for ec, ed in zip(enemy_carriers, enemy_drones_list)
+                               for d in ed])
+            player_targets = ([(carrier, None)] +
+                              [(d, carrier) for d in drones])
 
-        # Snapshot vision for each team — used for both targeting and drawing
-        player_can_see = _make_can_see(carrier, drones)
+            # Snapshot vision for each team — used for both targeting and drawing
+            player_can_see = _make_can_see(carrier, drones)
 
-        c_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
-        d_range = cfg.get("DRONE_ATTACK_RANGE_MM")
+            c_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
+            d_range = cfg.get("DRONE_ATTACK_RANGE_MM")
 
-        # Player carrier fires — must see AND be within carrier attack range
-        if carrier.hp > 0:
-            _maybe_fire(carrier, carrier.x, carrier.y,
-                        enemy_targets, missiles, 'player', dt,
-                        player_can_see, c_range)
-        # Player drones fire — must see AND be within drone attack range
-        for d in drones:
-            if d.hp > 0:
-                _maybe_fire(d, carrier.x + d.offset_x, carrier.y + d.offset_y,
+            # Player carrier fires — must see AND be within carrier attack range
+            if carrier.hp > 0:
+                _maybe_fire(carrier, carrier.x, carrier.y,
                             enemy_targets, missiles, 'player', dt,
-                            player_can_see, d_range)
-        # Each enemy carrier is its own "player" with its own vision + attack range
-        for ec, ed in zip(enemy_carriers, enemy_drones_list):
-            ec_can_see = _make_can_see(ec, ed)
-            if ec.hp > 0:
-                _maybe_fire(ec, ec.x, ec.y,
-                            player_targets, missiles, 'enemy', dt,
-                            ec_can_see, c_range)
-            for d in ed:
+                            player_can_see, c_range)
+            # Player drones fire — must see AND be within drone attack range
+            for d in drones:
                 if d.hp > 0:
-                    _maybe_fire(d, ec.x + d.offset_x, ec.y + d.offset_y,
+                    _maybe_fire(d, carrier.x + d.offset_x, carrier.y + d.offset_y,
+                                enemy_targets, missiles, 'player', dt,
+                                player_can_see, d_range)
+            # Each enemy carrier is its own "player" with its own vision + attack range
+            for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                ec_can_see = _make_can_see(ec, ed)
+                if ec.hp > 0:
+                    _maybe_fire(ec, ec.x, ec.y,
                                 player_targets, missiles, 'enemy', dt,
-                                ec_can_see, d_range)
+                                ec_can_see, c_range)
+                for d in ed:
+                    if d.hp > 0:
+                        _maybe_fire(d, ec.x + d.offset_x, ec.y + d.offset_y,
+                                    player_targets, missiles, 'enemy', dt,
+                                    ec_can_see, d_range)
 
-        # Update missiles and remove spent ones
-        for m in missiles:
-            m.update(dt)
-        missiles = [m for m in missiles if m.alive]
+            # Update missiles and remove spent ones
+            for m in missiles:
+                m.update(dt)
+            missiles = [m for m in missiles if m.alive]
 
-        # Remove dead player drones; carrier death wipes all of its drones
-        drones = [d for d in drones if d.hp > 0]
-        if carrier.hp <= 0:
-            drones = []
+            # Remove dead player drones; carrier death wipes all of its drones
+            drones = [d for d in drones if d.hp > 0]
+            if carrier.hp <= 0:
+                drones = []
 
-        # Remove dead enemy drones; remove dead enemy carriers + their drones
-        enemy_drones_list = [[d for d in ed if d.hp > 0]
-                             for ed in enemy_drones_list]
-        alive = [(ec, ed) for ec, ed in zip(enemy_carriers, enemy_drones_list)
-                 if ec.hp > 0]
-        enemy_carriers    = [ec for ec, ed in alive]
-        enemy_drones_list = [ed for ec, ed in alive]
+            # Remove dead enemy drones; remove dead enemy carriers + their drones
+            enemy_drones_list = [[d for d in ed if d.hp > 0]
+                                 for ed in enemy_drones_list]
+            _prev_n_enemies = len(enemy_carriers)
+            alive = [(ec, ed) for ec, ed in zip(enemy_carriers, enemy_drones_list)
+                     if ec.hp > 0]
+            enemy_carriers    = [ec for ec, ed in alive]
+            enemy_drones_list = [ed for ec, ed in alive]
+            kills += _prev_n_enemies - len(enemy_carriers)
+
+            # Win / loss check
+            if not enemy_carriers:
+                game_state = 'won'
+            elif carrier.hp <= 0:
+                game_state = 'lost'
 
         # --- Camera ---
         px_per_mm   = settings.DPI / 25.4
@@ -451,7 +539,9 @@ def main():
         max_r_px = int(cfg.get("DRONE_MAX_RADIUS_MM") * px_per_mm)
         draw_dotted_circle(screen, MAX_RADIUS_COLOR, cx, cy, max_r_px)
 
-        hud.draw(screen, carrier, drones)
+        hud.draw(screen, carrier, drones, kills=kills)
+        if game_state != 'playing' or paused:
+            draw_overlay(screen, 'paused' if paused else game_state, kills)
         pygame.display.flip()
 
     pygame.quit()
