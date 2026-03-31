@@ -26,7 +26,7 @@ class HUD:
     def update(self, elapsed_secs):
         pass
 
-    def draw(self, surface, carrier=None, drones=None):
+    def draw(self, surface, carrier=None, drones=None, kills=0):
         game_h, hud_h = self._layout()
         rect = pygame.Rect(0, game_h, settings.SCREEN_WIDTH, hud_h)
 
@@ -60,7 +60,8 @@ class HUD:
                        f"   SPD {int(spd):4d} mm/s")
         combat_text = (f"CARRIER  HP {int(carrier.hp)}/{int(carrier.max_hp)}"
                        f"   DRONES {n_drones}"
-                       f"  HP {drone_hp_min}/{drone_hp_max} ea")
+                       f"  HP {drone_hp_min}/{drone_hp_max} ea"
+                       f"   KILLS {kills}")
 
         nav_surf    = font.render(nav_text,    True, TEXT_COLOR)
         combat_surf = font.render(combat_text, True, TEXT_COLOR)
