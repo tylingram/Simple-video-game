@@ -1,7 +1,7 @@
 # Game settings — static values only
 # Tweakable runtime variables live in config.py
 
-TITLE         = "RTS Game"
+TITLE         = "Island RTS"
 SCREEN_WIDTH  = 1280
 SCREEN_HEIGHT = 720
 FPS           = 60
@@ -14,5 +14,6 @@ BLACK      = (0,   0,   0)
 WHITE      = (255, 255, 255)
 GRAY       = (40,  40,  40)
 DARK_GRAY  = (25,  25,  25)
-HUD_BG     = (20,  20,  30)
-HUD_BORDER = (60,  60,  80)
+HUD_BG     = (18,  18,  28)
+HUD_BORDER = (75,  75, 105)
+HUD_ACCENT = (80, 130, 200)   # thin top-strip accent line

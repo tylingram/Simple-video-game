@@ -17,9 +17,9 @@ import config as cfg
 WINDOWED_W = 1280
 WINDOWED_H = 720
 
-MAX_RADIUS_COLOR        = (80,  80, 100)   # light grey-blue dotted circle
-PLAYER_ATTACK_COLOR     = (60, 160,  90)   # muted green  — player attack range
-ENEMY_ATTACK_COLOR      = (180,  60,  60)  # muted red    — enemy attack range
+MAX_RADIUS_COLOR        = (90,  90, 125)   # grey-blue  — max drone roam radius
+PLAYER_ATTACK_COLOR     = (50, 185, 100)   # vivid muted green — player attack range
+ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack range
 
 
 def make_screen(fullscreen):
@@ -47,7 +47,7 @@ def draw_dotted_circle(surface, color, cx, cy, radius_px, n_dashes=56, width=1):
         return
     rect      = pygame.Rect(cx - radius_px, cy - radius_px,
                              radius_px * 2,  radius_px * 2)
-    dash_fill = 0.55   # fraction of each slot that is drawn
+    dash_fill = 0.45   # fraction of each slot that is drawn — open/airy gaps
     for i in range(n_dashes):
         if i % 2 == 0:
             a1 = 2 * math.pi * i          / n_dashes

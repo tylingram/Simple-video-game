@@ -6,8 +6,8 @@ import settings
 import config as cfg
 
 # Visual style
-COLOR  = (80,  200, 140)   # unit fill
-BORDER = (160, 255, 200)   # hitbox outline
+COLOR  = (55,  200, 120)   # unit fill — deeper teal-green
+BORDER = (130, 255, 180)   # hitbox outline
 
 # Trail style
 TRAIL_COLOR  = (50,  40,  18)   # crushed grass / muddy track
@@ -18,6 +18,18 @@ TRAIL_MAX    = 600               # hard cap on stored points
 
 HP_TEXT_COLOR = (255, 255, 255)
 _font_cache: dict = {}
+
+
+def _draw_hp_bar(surface, left, top, width, hp, max_hp, height=3):
+    """Thin horizontal HP bar: green at full, red at empty."""
+    if max_hp <= 0 or width < 2:
+        return
+    frac = max(0.0, min(1.0, hp / max_hp))
+    pygame.draw.rect(surface, (35, 10, 10), pygame.Rect(left, top, width, height))
+    fill_w = max(1, int(width * frac))
+    r = int(40  + 180 * (1.0 - frac))
+    g = int(200 - 160 * (1.0 - frac))
+    pygame.draw.rect(surface, (r, g, 40), pygame.Rect(left, top, fill_w, height))
 
 def _get_font(size: int):
     if size not in _font_cache:
@@ -142,3 +154,5 @@ class Carrier:
         font      = _get_font(font_size)
         surf      = font.render(str(int(self.hp)), True, HP_TEXT_COLOR)
         surface.blit(surf, surf.get_rect(center=(cx, cy)))
+        # HP bar — thin strip above carrier body
+        _draw_hp_bar(surface, cx - w // 2, cy - h // 2 - 5, w, self.hp, self.max_hp)
