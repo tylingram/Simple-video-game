@@ -57,8 +57,15 @@ def draw_dotted_circle(surface, color, cx, cy, radius_px, n_dashes=56, width=1):
 
 def launch_config_editor():
     """Open the config editor as a separate process so it can't affect the game."""
-    editor = os.path.join(os.path.dirname(__file__), "config_editor.py")
-    subprocess.Popen([sys.executable, editor])
+    if getattr(sys, 'frozen', False):
+        # PyInstaller build: config_editor is a sibling executable in the same folder
+        ext = ".exe" if sys.platform == "win32" else ""
+        editor = os.path.join(os.path.dirname(sys.executable), f"config_editor{ext}")
+        if os.path.exists(editor):
+            subprocess.Popen([editor])
+    else:
+        editor = os.path.join(os.path.dirname(__file__), "config_editor.py")
+        subprocess.Popen([sys.executable, editor])
 
 
 def resolve_carrier_collisions(carriers):

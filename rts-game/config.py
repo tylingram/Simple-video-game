@@ -3,11 +3,16 @@ Live game configuration variables.
 Values are persisted to config.json so changes survive restarts.
 """
 import json
+import sys
 import threading
 from pathlib import Path
 
-_lock      = threading.Lock()
-_SAVE_FILE = Path(__file__).parent / "config.json"
+_lock = threading.Lock()
+# When frozen by PyInstaller write config next to the .exe (writable);
+# in normal dev use the source directory as before.
+_SAVE_FILE = (Path(sys.executable).parent
+              if getattr(sys, 'frozen', False)
+              else Path(__file__).parent) / "config.json"
 
 # Defaults — only used when no saved value exists
 _defaults = {
