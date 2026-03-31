@@ -6,8 +6,8 @@ import settings
 import config as cfg
 
 # Visual style — red to distinguish from the player's green carrier
-COLOR  = (220,  60,  60)
-BORDER = (255, 140, 140)
+COLOR  = (210,  45,  45)   # deeper crimson
+BORDER = (255, 120, 120)
 
 # Trail style — dark reddish-brown (crushed grass, enemy tread)
 TRAIL_COLOR  = (80,  25,  15)
@@ -20,6 +20,18 @@ ARRIVE_DIST   = 15.0             # mm — pick new waypoint when this close to t
 
 HP_TEXT_COLOR = (255, 255, 255)
 _font_cache: dict = {}
+
+
+def _draw_hp_bar(surface, left, top, width, hp, max_hp, height=3):
+    """Thin horizontal HP bar: green at full, red at empty."""
+    if max_hp <= 0 or width < 2:
+        return
+    frac = max(0.0, min(1.0, hp / max_hp))
+    pygame.draw.rect(surface, (35, 10, 10), pygame.Rect(left, top, width, height))
+    fill_w = max(1, int(width * frac))
+    r = int(40  + 180 * (1.0 - frac))
+    g = int(200 - 160 * (1.0 - frac))
+    pygame.draw.rect(surface, (r, g, 40), pygame.Rect(left, top, fill_w, height))
 
 def _get_font(size: int):
     if size not in _font_cache:
@@ -74,12 +86,24 @@ class EnemyCarrier:
         self._target_x = cx + r * math.cos(angle)
         self._target_y = cy + r * math.sin(angle)
 
-    def _think(self):
+    def _think(self, player_x=None, player_y=None):
         """
         Return (dx, dy) in [-1, 1] representing the desired movement direction.
-        AI implementation: wander between random waypoints.
+        AI implementation: chase the player when within ENEMY_AGGRO_RANGE_MM,
+        otherwise wander between random waypoints.
         Replace with e.g. network packet parsing for multiplayer.
         """
+        # Chase player if they are within aggro range
+        if player_x is not None and player_y is not None:
+            aggro = cfg.get("ENEMY_AGGRO_RANGE_MM")
+            dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
+            if dist_to_player <= aggro:
+                if dist_to_player > 0:
+                    return ((player_x - self.x) / dist_to_player,
+                            (player_y - self.y) / dist_to_player)
+                return 0.0, 0.0
+
+        # Default: wander between random waypoints
         dx = self._target_x - self.x
         dy = self._target_y - self.y
         dist = math.hypot(dx, dy)
@@ -96,11 +120,11 @@ class EnemyCarrier:
     # Physics update — identical to player carrier, input-source agnostic
     # ------------------------------------------------------------------
 
-    def update(self, dt):
+    def update(self, dt, player_x=None, player_y=None):
         accel     = cfg.get("CARRIER_ACCELERATION")
         top_speed = cfg.get("CARRIER_TOP_SPEED")
 
-        ix, iy = self._think()   # input: unit direction vector (or 0,0)
+        ix, iy = self._think(player_x, player_y)   # input: unit direction vector (or 0,0)
 
         def apply_axis(v, d):
             if d != 0:
@@ -173,3 +197,5 @@ class EnemyCarrier:
             font      = _get_font(font_size)
             surf      = font.render(str(int(self.hp)), True, HP_TEXT_COLOR)
             surface.blit(surf, surf.get_rect(center=(sx, sy)))
+            # HP bar — thin strip above carrier body
+            _draw_hp_bar(surface, sx - w // 2, sy - h // 2 - 5, w, self.hp, self.max_hp)

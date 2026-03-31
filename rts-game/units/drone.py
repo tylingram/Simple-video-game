@@ -5,17 +5,32 @@ import settings
 import config as cfg
 
 # Visual style
-COLOR_NORMAL    = (80,  160, 220)
-BORDER_NORMAL   = (140, 200, 255)
-COLOR_SELECTED  = (80,  220, 80)
-BORDER_SELECTED = (140, 255, 140)
-COLOR_ENEMY     = (220,  80,  80)
-BORDER_ENEMY    = (255, 150, 150)
+COLOR_NORMAL    = (65,  155, 230)   # vivid steel-blue
+BORDER_NORMAL   = (130, 200, 255)
+COLOR_SELECTED  = (70,  220, 80)
+BORDER_SELECTED = (130, 255, 140)
+GLOW_SELECTED   = (50,  180, 60)    # outer glow ring colour when selected
+COLOR_ENEMY     = (210,  65,  65)   # crimson — matches enemy carrier hue
+BORDER_ENEMY    = (255, 130, 130)
 
 ARRIVE_THRESHOLD_MM = 0.3   # stop when this close to target (mm)
 HP_TEXT_COLOR       = (255, 255, 255)
 
 _font_cache: dict = {}
+
+
+def _draw_hp_bar(surface, cx, top, diameter_px, hp, max_hp, height=2):
+    """Thin HP bar centred below a drone circle."""
+    if max_hp <= 0 or diameter_px < 2:
+        return
+    frac   = max(0.0, min(1.0, hp / max_hp))
+    left   = cx - diameter_px // 2
+    width  = diameter_px
+    pygame.draw.rect(surface, (35, 10, 10), pygame.Rect(left, top, width, height))
+    fill_w = max(1, int(width * frac))
+    r = int(40  + 180 * (1.0 - frac))
+    g = int(200 - 160 * (1.0 - frac))
+    pygame.draw.rect(surface, (r, g, 40), pygame.Rect(left, top, fill_w, height))
 
 def _get_font(size: int):
     if size not in _font_cache:
@@ -147,6 +162,8 @@ class Drone:
             pygame.draw.circle(surface, COLOR_ENEMY,  (sx, sy), radius_px)
             pygame.draw.circle(surface, BORDER_ENEMY, (sx, sy), radius_px, 1)
             self._draw_hp(surface, sx, sy, radius_px)
+            _draw_hp_bar(surface, sx, sy + radius_px + 2,
+                         radius_px * 2, self.hp, self.max_hp)
 
     def draw(self, surface, game_h):
         px        = settings.DPI / 25.4
@@ -154,9 +171,14 @@ class Drone:
         sx, sy    = self.screen_pos(game_h)
         c = COLOR_SELECTED  if self.selected else COLOR_NORMAL
         b = BORDER_SELECTED if self.selected else BORDER_NORMAL
+        if self.selected:
+            # Outer glow ring — drawn before the fill so it sits behind
+            pygame.draw.circle(surface, GLOW_SELECTED, (sx, sy), radius_px + 3, 2)
         pygame.draw.circle(surface, c, (sx, sy), radius_px)
         pygame.draw.circle(surface, b, (sx, sy), radius_px, 1)
         self._draw_hp(surface, sx, sy, radius_px)
+        _draw_hp_bar(surface, sx, sy + radius_px + 2,
+                     radius_px * 2, self.hp, self.max_hp)
 
 
 # ── Formation factory ─────────────────────────────────────────────────────────

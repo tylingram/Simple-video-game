@@ -3,7 +3,8 @@ import pygame
 import settings
 import config as cfg
 
-TEXT_COLOR = (180, 220, 180)   # soft green — readable against dark HUD
+TEXT_COLOR  = (180, 220, 180)   # soft green — readable against dark HUD
+LABEL_COLOR = (120, 160, 210)   # muted blue for section labels / divider
 
 
 class HUD:
@@ -32,6 +33,9 @@ class HUD:
         pygame.draw.rect(surface, settings.HUD_BG, rect)
         pygame.draw.line(surface, settings.HUD_BORDER,
                          (0, game_h), (settings.SCREEN_WIDTH, game_h), 2)
+        # Thin accent strip just inside the top border
+        pygame.draw.line(surface, settings.HUD_ACCENT,
+                         (0, game_h + 2), (settings.SCREEN_WIDTH, game_h + 2), 1)
 
         if carrier is None:
             return
@@ -66,4 +70,10 @@ class HUD:
         y_tx = game_h + (hud_h - nav_surf.get_height()) // 2
 
         surface.blit(nav_surf,    (pad, y_tx))
-        surface.blit(combat_surf, (mid, y_tx))
+        surface.blit(combat_surf, (mid + pad, y_tx))
+
+        # Vertical divider between nav and combat sections
+        div_pad = max(4, hud_h // 8)
+        pygame.draw.line(surface, settings.HUD_BORDER,
+                         (mid, game_h + div_pad),
+                         (mid, game_h + hud_h - div_pad), 1)

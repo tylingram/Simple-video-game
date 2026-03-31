@@ -111,6 +111,10 @@ _defaults = {
         "value": 20.0,
         "description": "Max range in mm at which a drone can fire missiles",
     },
+    "ENEMY_AGGRO_RANGE_MM": {
+        "value": 150.0,
+        "description": "Range in mm at which an enemy carrier will chase the player",
+    },
 }
 
 
