@@ -1,4 +1,5 @@
 import math
+import random
 import pygame
 import settings
 import config as cfg
@@ -8,8 +9,18 @@ COLOR_NORMAL    = (80,  160, 220)
 BORDER_NORMAL   = (140, 200, 255)
 COLOR_SELECTED  = (80,  220, 80)
 BORDER_SELECTED = (140, 255, 140)
+COLOR_ENEMY     = (220,  80,  80)
+BORDER_ENEMY    = (255, 150, 150)
 
 ARRIVE_THRESHOLD_MM = 0.3   # stop when this close to target (mm)
+HP_TEXT_COLOR       = (255, 255, 255)
+
+_font_cache: dict = {}
+
+def _get_font(size: int):
+    if size not in _font_cache:
+        _font_cache[size] = pygame.font.Font(None, size)
+    return _font_cache[size]
 
 
 class Drone:
@@ -28,6 +39,9 @@ class Drone:
         self.vel_x    = 0.0            # velocity relative to carrier (mm/s)
         self.vel_y    = 0.0
         self.selected = False
+        self.hp            = cfg.get("DRONE_HP")
+        self.max_hp        = self.hp
+        self.fire_cooldown = random.uniform(0.0, 1.0)
 
     # ── Commanding ────────────────────────────────────────────────────────────
 
@@ -112,6 +126,28 @@ class Drone:
 
     # ── Drawing ───────────────────────────────────────────────────────────────
 
+    def _draw_hp(self, surface, sx, sy, radius_px):
+        """Render the HP number centred inside the drone circle."""
+        font_size = max(8, radius_px * 2 - 2)
+        font      = _get_font(font_size)
+        surf      = font.render(str(int(self.hp)), True, HP_TEXT_COLOR)
+        surface.blit(surf, surf.get_rect(center=(sx, sy)))
+
+    def draw_world(self, surface, carrier_x, carrier_y,
+                   camera_x_mm, camera_y_mm, game_h):
+        """Draw this drone for a world-positioned (enemy) carrier."""
+        px        = settings.DPI / 25.4
+        radius_px = max(1, int(cfg.get("DEFAULT_DRONE_DIAMETER_MM") / 2 * px))
+        wx = carrier_x + self.offset_x
+        wy = carrier_y + self.offset_y
+        sx = int((wx - camera_x_mm) * px)
+        sy = int((wy - camera_y_mm) * px)
+        if (-radius_px <= sx < settings.SCREEN_WIDTH + radius_px and
+                -radius_px <= sy < game_h + radius_px):
+            pygame.draw.circle(surface, COLOR_ENEMY,  (sx, sy), radius_px)
+            pygame.draw.circle(surface, BORDER_ENEMY, (sx, sy), radius_px, 1)
+            self._draw_hp(surface, sx, sy, radius_px)
+
     def draw(self, surface, game_h):
         px        = settings.DPI / 25.4
         radius_px = max(1, int(cfg.get("DEFAULT_DRONE_DIAMETER_MM") / 2 * px))
@@ -120,6 +156,7 @@ class Drone:
         b = BORDER_SELECTED if self.selected else BORDER_NORMAL
         pygame.draw.circle(surface, c, (sx, sy), radius_px)
         pygame.draw.circle(surface, b, (sx, sy), radius_px, 1)
+        self._draw_hp(surface, sx, sy, radius_px)
 
 
 # ── Formation factory ─────────────────────────────────────────────────────────

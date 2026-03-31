@@ -11,23 +11,36 @@ from pathlib import Path
 SAVE_FILE = Path(__file__).parent / "config.json"
 
 DEFAULTS = {
-    "HUD_SIZE":              {"value": 10.0,   "description": "Changes the % of screen taken up by HUD"},
-    "CARRIER_WIDTH_MM":      {"value": 5.0,    "description": "Width of the Carrier unit in mm"},
-    "CARRIER_HEIGHT_MM":     {"value": 10.0,   "description": "Height of the Carrier unit in mm"},
-    "CARRIER_ACCELERATION":  {"value": 1.0,    "description": "Carrier acceleration in mm/s²"},
-    "CARRIER_TOP_SPEED":     {"value": 20.0,   "description": "Carrier max speed in mm/s"},
+    # ── Map ──────────────────────────────────────────────────────────────────
     "MAP_WIDTH_MM":               {"value": 1000.0, "description": "Map width in mm"},
     "MAP_HEIGHT_MM":              {"value": 1000.0, "description": "Map height in mm"},
-    "CARRIER_VISION_RADIUS_MM":   {"value": 50.0,   "description": "Radius of the Carrier's visible area in mm"},
-    "DEFAULT_DRONE_DIAMETER_MM":  {"value": 3.0,    "description": "Diameter of a default drone in mm"},
-    "DEFAULT_DRONE_VISION_MM":    {"value": 50.0,   "description": "Vision radius of a default drone in mm"},
-    "STARTING_DRONES":            {"value": 5.0,    "description": "Number of drones at game start"},
-    "DRONE_START_RADIUS_MM":       {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
-    "DEFAULT_DRONE_ACCELERATION": {"value": 400.0,  "description": "Drone acceleration in mm/s²"},
-    "DEFAULT_DRONE_MAX_SPEED":    {"value": 200.0,  "description": "Drone max speed in mm/s"},
-    "DRONE_MAX_RADIUS_MM":        {"value": 300.0,  "description": "Max distance a drone can be commanded from the carrier in mm"},
     "PONDS_PER_MAP":              {"value": 3.0,    "description": "Number of random ponds on the map"},
     "POND_SIZE_MM":               {"value": 30.0,   "description": "Full width/diameter of each pond in mm"},
+    # ── Carrier ───────────────────────────────────────────────────────────────
+    "CARRIER_WIDTH_MM":           {"value": 5.0,    "description": "Width of the Carrier unit in mm"},
+    "CARRIER_HEIGHT_MM":          {"value": 10.0,   "description": "Height of the Carrier unit in mm"},
+    "CARRIER_ACCELERATION":       {"value": 1.0,    "description": "Carrier acceleration in mm/s²"},
+    "CARRIER_TOP_SPEED":          {"value": 20.0,   "description": "Carrier max speed in mm/s"},
+    "CARRIER_HP":                 {"value": 10.0,   "description": "Starting HP for each carrier"},
+    "CARRIER_VISION_RADIUS_MM":   {"value": 50.0,   "description": "Radius of the Carrier's visible area in mm"},
+    "CARRIER_ATTACK_RANGE_MM":    {"value": 20.0,   "description": "Max range in mm at which a carrier can fire missiles"},
+    # ── Drones ────────────────────────────────────────────────────────────────
+    "STARTING_DRONES":            {"value": 5.0,    "description": "Number of drones at game start"},
+    "DRONE_START_RADIUS_MM":      {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
+    "DRONE_MAX_RADIUS_MM":        {"value": 300.0,  "description": "Max distance a drone can be commanded from the carrier in mm"},
+    "DEFAULT_DRONE_DIAMETER_MM":  {"value": 3.0,    "description": "Diameter of a default drone in mm"},
+    "DEFAULT_DRONE_ACCELERATION": {"value": 400.0,  "description": "Drone acceleration in mm/s²"},
+    "DEFAULT_DRONE_MAX_SPEED":    {"value": 200.0,  "description": "Drone max speed in mm/s"},
+    "DRONE_HP":                   {"value": 5.0,    "description": "Starting HP for each individual drone"},
+    "DEFAULT_DRONE_VISION_MM":    {"value": 50.0,   "description": "Vision radius of a default drone in mm"},
+    "DRONE_ATTACK_RANGE_MM":      {"value": 20.0,   "description": "Max range in mm at which a drone can fire missiles"},
+    # ── Combat ────────────────────────────────────────────────────────────────
+    "MISSILE_DAMAGE":             {"value": 1.0,    "description": "Damage dealt per missile hit"},
+    "MISSILE_FIRE_RATE":          {"value": 1.0,    "description": "Missiles fired per second per unit"},
+    "MISSILE_SPEED_MM":           {"value": 200.0,  "description": "Missile travel speed in mm/s"},
+    # ── Game ──────────────────────────────────────────────────────────────────
+    "ENEMY_CARRIERS":             {"value": 2.0,    "description": "Number of enemy carriers on the map"},
+    "HUD_SIZE":                   {"value": 10.0,   "description": "HUD height as % of screen height"},
 }
 
 

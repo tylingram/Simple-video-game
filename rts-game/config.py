@@ -79,13 +79,37 @@ _defaults = {
         "value": 30.0,
         "description": "Full width/diameter of each pond in mm",
     },
-    "ISLANDS_PER_MAP": {
-        "value": 8.0,
-        "description": "Number of random island obstacles on the map",
+    "CARRIER_HP": {
+        "value": 10.0,
+        "description": "Starting HP for each carrier",
     },
-    "ISLAND_SIZE_MM": {
-        "value": 40.0,
-        "description": "Approximate diameter of each island obstacle in mm",
+    "DRONE_HP": {
+        "value": 5.0,
+        "description": "Starting HP for each drone",
+    },
+    "MISSILE_DAMAGE": {
+        "value": 1.0,
+        "description": "Damage dealt per missile hit",
+    },
+    "MISSILE_FIRE_RATE": {
+        "value": 1.0,
+        "description": "Missiles fired per second per unit",
+    },
+    "MISSILE_SPEED_MM": {
+        "value": 200.0,
+        "description": "Missile travel speed in mm/s",
+    },
+    "ENEMY_CARRIERS": {
+        "value": 2.0,
+        "description": "Number of enemy carriers spawned on the map",
+    },
+    "CARRIER_ATTACK_RANGE_MM": {
+        "value": 20.0,
+        "description": "Max range in mm at which a carrier can fire missiles",
+    },
+    "DRONE_ATTACK_RANGE_MM": {
+        "value": 20.0,
+        "description": "Max range in mm at which a drone can fire missiles",
     },
 }
 
