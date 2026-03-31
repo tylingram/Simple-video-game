@@ -79,6 +79,14 @@ _defaults = {
         "value": 30.0,
         "description": "Full width/diameter of each pond in mm",
     },
+    "ISLANDS_PER_MAP": {
+        "value": 8.0,
+        "description": "Number of random island obstacles on the map",
+    },
+    "ISLAND_SIZE_MM": {
+        "value": 40.0,
+        "description": "Approximate diameter of each island obstacle in mm",
+    },
 }
 
 
