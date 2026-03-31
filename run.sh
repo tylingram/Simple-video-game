@@ -8,7 +8,7 @@ PYTHON="${VENV_DIR}/bin/python"
 # Create venv if it doesn't exist
 if [ ! -f "$PYTHON" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv "$VENV_DIR"
+    python3 -m venv "$VENV_DIR" --upgrade-deps
 fi
 
 # Install/sync dependencies
