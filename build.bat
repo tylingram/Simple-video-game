@@ -20,7 +20,7 @@ cd /d "%REPO_DIR%"
 "%VENV_DIR%\Scripts\pyinstaller" game.spec --distpath dist --workpath build\pyinstaller --noconfirm
 
 echo Zipping...
-powershell -Command "Compress-Archive -Path 'dist\RTS Game' -DestinationPath 'RTS_Game_Windows.zip' -Force"
+powershell -Command "Compress-Archive -Path 'dist\RTS Game' -DestinationPath 'RTS_Game_Windows.zip' -CompressionLevel Optimal -Force"
 
 echo.
 echo Done: RTS_Game_Windows.zip

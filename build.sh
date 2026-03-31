@@ -19,7 +19,7 @@ cd "$REPO_DIR"
 "$VENV_DIR/bin/pyinstaller" game.spec --distpath dist --workpath build/pyinstaller --noconfirm
 
 echo "Zipping..."
-zip -r "RTS_Game_Linux.zip" "dist/RTS Game"
+zip -9 -r "RTS_Game_Linux.zip" "dist/RTS Game"
 
 echo ""
 echo "Done: RTS_Game_Linux.zip"
