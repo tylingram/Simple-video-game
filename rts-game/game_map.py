@@ -13,9 +13,17 @@ import pygame.gfxdraw
 import settings
 import config as cfg
 
-OCEAN_COLOR = (30,  60, 120)   # surrounding sea
-LAND_COLOR  = (18,  38,  18)   # interior land (dark — good contrast for units)
-COAST_COLOR = (175, 145,  80)  # sandy coastline ring
+OCEAN_COLOR  = (30,  60, 120)   # surrounding sea
+LAND_COLOR   = (18,  38,  18)   # interior land base
+COAST_COLOR  = (175, 145,  80)  # sandy coastline ring
+GRASS_COLORS = [                # scattered tuft shades — break up flat land colour
+    (30,  58, 22),
+    (25,  50, 18),
+    (38,  70, 28),
+    (22,  45, 16),
+    (45,  80, 32),
+    (14,  32, 12),
+]
 
 
 def _make_island_verts(cx, cy, rx, ry):
@@ -112,6 +120,7 @@ class GameMap:
         self.verts       = []
         self.coast_verts = []
         self.cull_radius = 0.0
+        self.grass       = []   # (world_x, world_y, color_idx, radius_px)
         self.reset()
 
     def reset(self):
@@ -125,6 +134,83 @@ class GameMap:
                             for x, y in self.verts]
         self.cull_radius = max(math.hypot(x - cx, y - cy)
                                for x, y in self.coast_verts)
+        self._gen_grass()
+
+    def _gen_grass(self):
+        """Pre-generate grass tuft positions inside the land polygon."""
+        # Scale tuft count with island area so density stays consistent
+        n = max(200, int(self.cull_radius ** 2 / 50))
+        min_x = min(v[0] for v in self.verts)
+        max_x = max(v[0] for v in self.verts)
+        min_y = min(v[1] for v in self.verts)
+        max_y = max(v[1] for v in self.verts)
+        self.grass = []
+        attempts = 0
+        while len(self.grass) < n and attempts < n * 5:
+            attempts += 1
+            x = random.uniform(min_x, max_x)
+            y = random.uniform(min_y, max_y)
+            if _point_in_poly(x, y, self.verts):
+                ci   = random.randrange(len(GRASS_COLORS))
+                size = random.choice([1, 1, 2, 2, 3])
+                self.grass.append((x, y, ci, size))
+
+    # ------------------------------------------------------------------
+    # Spawn-point distribution — edge of island, well spaced
+    # ------------------------------------------------------------------
+
+    def edge_spawn_points(self, n, min_sep_mm, ponds=None):
+        """
+        Return n world-space (x, y) positions distributed around the coast,
+        each pushed inward so carriers start clearly inside the boundary.
+        Points are guaranteed >= min_sep_mm apart from each other and will
+        never land inside a pond.
+        ponds — optional Ponds manager; candidates inside any pond are skipped.
+        """
+        map_w = cfg.get("MAP_WIDTH_MM")
+        map_h = cfg.get("MAP_HEIGHT_MM")
+        cx, cy = map_w / 2, map_h / 2
+        inset = cfg.get("CARRIER_WIDTH_MM") * 3   # push well inside coast
+
+        # Sample perimeter at ~1 point per mm then inset each toward centre
+        samples = []
+        v = self.coast_verts
+        for i in range(len(v)):
+            x1, y1 = v[i]
+            x2, y2 = v[(i + 1) % len(v)]
+            steps = max(1, int(math.hypot(x2 - x1, y2 - y1)))
+            for j in range(steps):
+                t  = j / steps
+                px_, py_ = x1 + t * (x2 - x1), y1 + t * (y2 - y1)
+                d  = math.hypot(cx - px_, cy - py_)
+                if d > 0:
+                    samples.append((px_ + (cx - px_) / d * inset,
+                                    py_ + (cy - py_) / d * inset))
+
+        if not samples:
+            return [(cx, cy)] * n
+
+        # Start from a random offset so spawns are never in the same place
+        start   = random.randrange(len(samples))
+        ordered = samples[start:] + samples[:start]
+
+        pond_list = ponds.ponds if ponds is not None else []
+
+        chosen = []
+        for px_, py_ in ordered:
+            if any(_point_in_poly(px_, py_, pond.verts) for pond in pond_list):
+                continue
+            if all(math.hypot(px_ - qx, py_ - qy) >= min_sep_mm
+                   for qx, qy in chosen):
+                chosen.append((px_, py_))
+                if len(chosen) == n:
+                    break
+
+        # Fallback to centre if perimeter couldn't fit everyone
+        while len(chosen) < n:
+            chosen.append((cx, cy))
+
+        return chosen
 
     # ------------------------------------------------------------------
     # Containment collision — keeps carrier inside the island
@@ -199,6 +285,18 @@ class GameMap:
                     int((wy - camera_y_mm) * px))
 
         # Land — fills all the way to the coast boundary (no separate coast ring)
+        # pygame.draw.polygon is used instead of gfxdraw because gfxdraw silently
+        # fails to render when any vertex has negative screen coordinates, which
+        # happens when the coast polygon (noise-expanded beyond map bounds) scrolls
+        # partially off-screen as the carrier approaches the island edge.
         land_verts = [to_screen(x, y) for x, y in self.coast_verts]
-        pygame.gfxdraw.filled_polygon(surface, land_verts, LAND_COLOR)
-        pygame.gfxdraw.aapolygon(surface, land_verts, LAND_COLOR)
+        pygame.draw.polygon(surface, LAND_COLOR, land_verts)
+        pygame.draw.aalines(surface, LAND_COLOR, True, land_verts)
+
+        # Grass texture — scattered tufts in varying greens give parallax cue
+        # when moving; only draw those inside the current viewport
+        for gx, gy, ci, size in self.grass:
+            sx = int((gx - camera_x_mm) * px)
+            sy = int((gy - camera_y_mm) * px)
+            if 0 <= sx < settings.SCREEN_WIDTH and 0 <= sy < game_h:
+                pygame.draw.circle(surface, GRASS_COLORS[ci], (sx, sy), size)
