@@ -35,9 +35,13 @@ DEFAULTS = {
     "DEFAULT_DRONE_VISION_MM":    {"value": 50.0,   "description": "Vision radius of a default drone in mm"},
     "DRONE_ATTACK_RANGE_MM":      {"value": 20.0,   "description": "Max range in mm at which a drone can fire missiles"},
     # ── Combat ────────────────────────────────────────────────────────────────
-    "MISSILE_DAMAGE":             {"value": 1.0,    "description": "Damage dealt per missile hit"},
-    "MISSILE_FIRE_RATE":          {"value": 1.0,    "description": "Missiles fired per second per unit"},
+    "MISSILE_DAMAGE":             {"value": 1.0,    "description": "Damage dealt per normal missile hit"},
+    "MISSILE_FIRE_RATE":          {"value": 1.0,    "description": "Normal missiles fired per second per unit"},
     "MISSILE_SPEED_MM":           {"value": 200.0,  "description": "Missile travel speed in mm/s"},
+    "EXPLOSIVE_BLAST_RADIUS_MM":  {"value": 10.0,   "description": "Blast radius of explosive missiles in mm"},
+    "EXPLOSIVE_DAMAGE":           {"value": 1.0,    "description": "Damage dealt to each unit in the blast radius"},
+    "EXPLOSIVE_FIRE_RATE":        {"value": 0.25,   "description": "Explosive missiles fired per second (0.25 = 1 every 4 s)"},
+    "ENEMY_EXPLOSIVE_DRONE_RATIO":{"value": 0.3,    "description": "Fraction of enemy scout drones using explosive missiles (0-1)"},
     # ── Game ──────────────────────────────────────────────────────────────────
     "ENEMY_CARRIERS":             {"value": 2.0,    "description": "Number of enemy carriers on the map"},
     "HUD_SIZE":                   {"value": 10.0,   "description": "HUD height as % of screen height"},
@@ -150,22 +154,26 @@ def build_ui():
     status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3",
                       font=("Courier", 9), wraplength=320, justify="left")
 
+    FLOAT_KEYS = {"EXPLOSIVE_FIRE_RATE", "ENEMY_EXPLOSIVE_DRONE_RATIO"}
+
     def on_save():
-        # Parse all values — must be positive integers
+        # Parse all values — floats allowed for FLOAT_KEYS, else positive integers
         errors = []
         parsed = {}
         for key, var in entries.items():
             raw = var.get().strip()
             try:
                 val = float(raw)
-                if val != int(val):
-                    errors.append(f"{key}: must be a whole number (got {raw})")
-                elif val <= 0:
+                if val <= 0:
                     errors.append(f"{key}: must be greater than 0 (got {raw})")
+                elif key in FLOAT_KEYS:
+                    parsed[key] = val
+                elif val != int(val):
+                    errors.append(f"{key}: must be a whole number (got {raw})")
                 else:
                     parsed[key] = int(val)
             except ValueError:
-                errors.append(f"{key}: must be a positive integer (got '{raw}')")
+                errors.append(f"{key}: must be a number (got '{raw}')")
 
         if errors:
             status.config(text="\n".join(errors), fg="#ff6b6b")

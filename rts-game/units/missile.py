@@ -111,7 +111,7 @@ class Missile:
             self.target.hp -= cfg.get("MISSILE_DAMAGE")
             if self.explosive and splash_targets:
                 blast_r  = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
-                splash_d = cfg.get("MISSILE_DAMAGE")
+                splash_d = cfg.get("EXPLOSIVE_DAMAGE")
                 for unit, wx, wy in splash_targets:
                     if unit is not self.target and unit.hp > 0:
                         if math.hypot(wx - tx, wy - ty) <= blast_r:

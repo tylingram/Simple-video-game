@@ -116,8 +116,12 @@ _defaults = {
         "description": "Range in mm at which an enemy carrier will chase the player",
     },
     "EXPLOSIVE_BLAST_RADIUS_MM": {
-        "value": 5.0,
+        "value": 10.0,
         "description": "Blast radius of explosive missiles in mm",
+    },
+    "EXPLOSIVE_DAMAGE": {
+        "value": 1.0,
+        "description": "Damage dealt to each unit caught in the blast radius",
     },
     "EXPLOSIVE_FIRE_RATE": {
         "value": 0.25,
