@@ -139,9 +139,25 @@ _defaults = {
 }
 
 
+_DEFAULTS_FILE = Path(__file__).parent / "config.defaults.json"
+
+
 def _load():
-    """Merge saved values on top of defaults."""
+    """Load order: code defaults → config.defaults.json → config.json.
+    config.defaults.json is tracked in git (shared baseline).
+    config.json is gitignored (personal tweaks, hot-reloaded by editor).
+    """
     data = {k: dict(v) for k, v in _defaults.items()}
+    # 1. Apply shared defaults from tracked file
+    if _DEFAULTS_FILE.exists():
+        try:
+            shared = json.loads(_DEFAULTS_FILE.read_text())
+            for key, value in shared.items():
+                if key in data:
+                    data[key]["value"] = value
+        except Exception:
+            pass
+    # 2. Apply personal overrides from local (gitignored) file
     if _SAVE_FILE.exists():
         try:
             saved = json.loads(_SAVE_FILE.read_text())
