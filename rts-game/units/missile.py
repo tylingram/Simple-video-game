@@ -8,11 +8,12 @@ ENEMY_COLOR     = (255, 160,  40)   # orange — enemy missiles
 EXPLOSIVE_COLOR = (255, 230,  60)   # bright yellow — explosive missiles
 RADIUS_PX       = 3
 
-EXPLOSION_DURATION = 0.35   # seconds the animation plays
+EXPLOSION_DURATION = 0.45   # seconds the animation plays
+EXPLOSION_MIN_PX   = 28     # minimum screen radius so it's always visible
 
 
 class Explosion:
-    """Brief expanding ring drawn when an explosive missile hits."""
+    """Brief expanding flash drawn when an explosive missile hits."""
 
     def __init__(self, x, y):
         self.x    = float(x)
@@ -28,25 +29,45 @@ class Explosion:
     def draw(self, surface, camera_x_mm, camera_y_mm, game_h, px):
         if self.done:
             return
-        t         = self.age / EXPLOSION_DURATION          # 0 → 1
-        blast_r   = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
-        max_r_px  = max(2, int(blast_r * px))
-        cur_r_px  = max(1, int(max_r_px * t))
-        alpha     = int(255 * (1.0 - t))
+        t        = self.age / EXPLOSION_DURATION   # 0 → 1
         sx = int((self.x - camera_x_mm) * px)
         sy = int((self.y - camera_y_mm) * px)
+        blast_r  = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
+        max_r_px = max(EXPLOSION_MIN_PX, int(blast_r * px))
         if not (-max_r_px <= sx < settings.SCREEN_WIDTH + max_r_px and
                 -max_r_px <= sy < game_h + max_r_px):
             return
-        # Outer expanding ring fades out
-        r = max(0, min(255, int(255 * (1.0 - t * 0.5))))
-        g = max(0, min(255, int(200 * (1.0 - t))))
-        color = (r, g, 0)
-        pygame.draw.circle(surface, color, (sx, sy), cur_r_px, max(1, cur_r_px // 4))
-        # Bright core that shrinks
-        core_r = max(1, int(max_r_px * 0.3 * (1.0 - t)))
-        if core_r > 0:
-            pygame.draw.circle(surface, (255, 240, 100), (sx, sy), core_r)
+
+        # --- flash layers, drawn back-to-front ---
+        # 1. Outer shockwave ring — expands full radius, fades out
+        ring_r = max(2, int(max_r_px * t))
+        ring_a = int(220 * (1.0 - t))
+        ring_surf = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surf, (255, 140, 0, ring_a),
+                           (ring_r + 2, ring_r + 2), ring_r, max(2, ring_r // 4))
+        surface.blit(ring_surf, (sx - ring_r - 2, sy - ring_r - 2))
+
+        # 2. Mid fireball — expands to 60% then contracts
+        fire_t  = t * 2 if t < 0.5 else 2.0 - t * 2   # 0→1→0
+        fire_r  = max(2, int(max_r_px * 0.6 * fire_t))
+        fire_a  = int(240 * fire_t)
+        if fire_r > 0:
+            fire_surf = pygame.Surface((fire_r * 2 + 2, fire_r * 2 + 2), pygame.SRCALPHA)
+            fr = max(0, min(255, int(255)))
+            fg = max(0, min(255, int(180 * fire_t)))
+            pygame.draw.circle(fire_surf, (fr, fg, 20, fire_a),
+                               (fire_r + 1, fire_r + 1), fire_r)
+            surface.blit(fire_surf, (sx - fire_r - 1, sy - fire_r - 1))
+
+        # 3. Bright white/yellow core — only first 40% of duration
+        if t < 0.4:
+            core_frac = 1.0 - t / 0.4
+            core_r    = max(2, int(max_r_px * 0.3 * core_frac))
+            core_a    = int(255 * core_frac)
+            core_surf = pygame.Surface((core_r * 2 + 2, core_r * 2 + 2), pygame.SRCALPHA)
+            pygame.draw.circle(core_surf, (255, 255, 200, core_a),
+                               (core_r + 1, core_r + 1), core_r)
+            surface.blit(core_surf, (sx - core_r - 1, sy - core_r - 1))
 
 
 class Missile:
