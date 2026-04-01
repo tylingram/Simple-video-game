@@ -186,10 +186,13 @@ def _make_can_see(observer_carrier, observer_drones):
     return can_see
 
 
-def _nearest_enemy(sx, sy, targets, can_see=None, attack_range=None):
-    """Return (unit, cref) of the closest live, visible, in-range target, or (None, None)."""
-    best, best_d  = None, float('inf')
-    range_sq      = attack_range ** 2 if attack_range is not None else None
+def _nearest_enemy(sx, sy, targets, can_see=None, attack_range=None, prefer_carrier=False):
+    """Return (unit, cref) of the best live, visible, in-range target, or (None, None).
+    prefer_carrier=True: if a carrier (cref=None) is in range, always pick it over drones."""
+    best, best_d       = None, float('inf')
+    carrier_hit        = None   # best in-range carrier target
+    carrier_hit_d      = float('inf')
+    range_sq           = attack_range ** 2 if attack_range is not None else None
     for unit, cref in targets:
         if unit.hp <= 0:
             continue
@@ -200,9 +203,16 @@ def _nearest_enemy(sx, sy, targets, can_see=None, attack_range=None):
         if range_sq is not None and dsq > range_sq:
             continue
         d = math.sqrt(dsq)
-        if d < best_d:
-            best_d = d
-            best   = (unit, cref)
+        if prefer_carrier and cref is None:
+            if d < carrier_hit_d:
+                carrier_hit_d = d
+                carrier_hit   = (unit, cref)
+        else:
+            if d < best_d:
+                best_d = d
+                best   = (unit, cref)
+    if prefer_carrier and carrier_hit is not None:
+        return carrier_hit
     return best if best else (None, None)
 
 
@@ -212,7 +222,8 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
     shooter.fire_cooldown -= dt
     if shooter.fire_cooldown > 0 or not targets:
         return
-    unit, cref = _nearest_enemy(sx, sy, targets, can_see, attack_range)
+    prefer = (team == 'enemy')
+    unit, cref = _nearest_enemy(sx, sy, targets, can_see, attack_range, prefer_carrier=prefer)
     if unit is not None:
         explosive = getattr(shooter, 'missile_type', 'normal') == 'explosive'
         rate      = cfg.get("EXPLOSIVE_FIRE_RATE") if explosive else cfg.get("MISSILE_FIRE_RATE")

@@ -61,37 +61,57 @@ class EnemyCarrier:
         self._trail_dist = 0.0
         self._pick_waypoint()
         self._drone_timer    = 0.0
-        self._drone_interval = random.uniform(2.0, 5.0)  # stagger across carriers
+        self._drone_interval = random.uniform(0.5, 1.5)  # stagger across carriers
 
     # ------------------------------------------------------------------
     # AI input — swap this method out for network/keyboard input later
     # ------------------------------------------------------------------
 
-    def _command_drones(self, player_visible=False):
+    def _command_drones(self, player_visible=False, player_x=None, player_y=None):
         """
-        Split drones: ~60% stay close as normal-missile guards,
-        ~40% spread far as scouts (explosive when player is visible).
+        Split drones: ~60% guards form a shield facing the player,
+        ~40% scouts advance toward the player when visible (explosive).
         """
         n = len(self.drones)
         if n == 0:
             return
         max_r    = cfg.get("DRONE_MAX_RADIUS_MM")
         n_guards = max(1, int(n * 0.6))
+        n_scouts = n - n_guards
         close_r  = max_r * 0.3
+
+        # Direction toward player (used to orient guards and advance scouts)
+        if player_visible and player_x is not None:
+            angle_to_player = math.atan2(player_y - self.y, player_x - self.x)
+        else:
+            angle_to_player = None
 
         for i, drone in enumerate(self.drones):
             if i < n_guards:
-                # Guard — tight cluster around carrier, always normal
-                angle = 2 * math.pi * i / n_guards
-                r     = random.uniform(close_r * 0.4, close_r)
+                # Guard — arc on the side facing the player, normal missiles
+                if angle_to_player is not None:
+                    spread = math.pi * 0.7   # 126° arc facing threat
+                    frac   = i / max(1, n_guards - 1)
+                    angle  = angle_to_player + spread * (frac - 0.5)
+                else:
+                    angle = 2 * math.pi * i / n_guards
+                r = random.uniform(close_r * 0.5, close_r)
                 drone.set_target(r * math.cos(angle), r * math.sin(angle))
                 drone.missile_type = 'normal'
             else:
-                # Scout — spread far, explosive only when they can see the player
-                angle = random.uniform(0, 2 * math.pi)
-                r     = random.uniform(max_r * 0.6, max_r * 0.9)
+                # Scout — fan toward the player when visible, explosive
+                scout_idx = i - n_guards
+                if angle_to_player is not None:
+                    spread = math.pi * 0.5   # 90° fan aimed at player
+                    frac   = scout_idx / max(1, n_scouts - 1)
+                    angle  = angle_to_player + spread * (frac - 0.5)
+                    r      = random.uniform(max_r * 0.65, max_r * 0.9)
+                    drone.missile_type = 'explosive'
+                else:
+                    angle = random.uniform(0, 2 * math.pi)
+                    r     = random.uniform(max_r * 0.6, max_r * 0.9)
+                    drone.missile_type = 'normal'
                 drone.set_target(r * math.cos(angle), r * math.sin(angle))
-                drone.missile_type = 'explosive' if player_visible else 'normal'
 
     def _pick_waypoint(self):
         """Choose a random destination well inside the island."""
@@ -129,14 +149,27 @@ class EnemyCarrier:
         inform combat targeting but not carrier movement, so it never looks
         like a maphack to the player.
         """
-        # Flee from player only when carrier itself can see them
+        # Kite: when carrier can see the player, maintain a distance just
+        # outside the player's carrier attack range so drones can still engage
+        # but the carrier itself is harder to hit directly.
         if player_x is not None and player_y is not None:
             if self._carrier_can_see(player_x, player_y):
-                dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
-                if dist_to_player > 0:
-                    return (-(player_x - self.x) / dist_to_player,
-                            -(player_y - self.y) / dist_to_player)
-                return 0.0, 0.0
+                dx   = self.x - player_x
+                dy   = self.y - player_y
+                dist = math.hypot(dx, dy)
+                # Ideal kiting distance: player attack range + 20mm buffer
+                kite_dist = cfg.get("CARRIER_ATTACK_RANGE_MM") + 20.0
+                if dist < kite_dist:
+                    # Too close — move directly away
+                    if dist > 0:
+                        return dx / dist, dy / dist
+                    return 0.0, 0.0
+                elif dist < kite_dist + 10.0:
+                    # In the sweet spot — strafe perpendicular to keep moving
+                    if dist > 0:
+                        return -dy / dist, dx / dist
+                    return 0.0, 0.0
+                # Far enough — fall through to waypoint wander
 
         # Default: wander between random waypoints
         dx = self._target_x - self.x
@@ -187,8 +220,8 @@ class EnemyCarrier:
         self._drone_timer += dt
         if self._drone_timer >= self._drone_interval:
             self._drone_timer    = 0.0
-            self._drone_interval = random.uniform(2.0, 5.0)
-            self._command_drones(player_visible)
+            self._drone_interval = random.uniform(0.5, 1.5)
+            self._command_drones(player_visible, player_x, player_y)
 
         # Trail — record position, age points, evict faded ones
         self._trail_dist += math.hypot(self.vx * dt, self.vy * dt)
