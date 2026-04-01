@@ -205,16 +205,16 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
     shooter.fire_cooldown -= dt
     if shooter.fire_cooldown > 0 or not targets:
         return
-    explosive = getattr(shooter, 'missile_type', 'normal') == 'explosive'
-    rate = cfg.get("EXPLOSIVE_FIRE_RATE") if explosive else cfg.get("MISSILE_FIRE_RATE")
-    cooldown = 1.0 / rate
-    shooter.fire_cooldown = cooldown
-    if hasattr(shooter, 'fire_cooldown_max'):
-        shooter.fire_cooldown_max = cooldown
-    if hasattr(shooter, 'has_fired'):
-        shooter.has_fired = True
     unit, cref = _nearest_enemy(sx, sy, targets, can_see, attack_range)
     if unit is not None:
+        explosive = getattr(shooter, 'missile_type', 'normal') == 'explosive'
+        rate      = cfg.get("EXPLOSIVE_FIRE_RATE") if explosive else cfg.get("MISSILE_FIRE_RATE")
+        cooldown  = 1.0 / rate
+        shooter.fire_cooldown = cooldown
+        if hasattr(shooter, 'fire_cooldown_max'):
+            shooter.fire_cooldown_max = cooldown
+        if hasattr(shooter, 'has_fired'):
+            shooter.has_fired = True
         missiles.append(Missile(sx, sy, unit, cref, team, explosive=explosive))
 
 
