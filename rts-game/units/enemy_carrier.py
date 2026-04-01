@@ -117,16 +117,21 @@ class EnemyCarrier:
                 return True
         return False
 
+    def _carrier_can_see(self, wx, wy):
+        """True only if (wx, wy) is within this carrier's own vision — no drone scouts."""
+        vis_sq = cfg.get("CARRIER_VISION_RADIUS_MM") ** 2
+        return (wx - self.x) ** 2 + (wy - self.y) ** 2 <= vis_sq
+
     def _think(self, player_x=None, player_y=None):
         """
-        Return (dx, dy) in [-1 ,1] representing the desired movement direction.
-        AI implementation: chase the player when visible (same vision rules as
-        the player's fog-of-war), otherwise wander between random waypoints.
-        Replace with e.g. network packet parsing for multiplayer.
+        Return (dx, dy) in [-1, 1] representing the desired movement direction.
+        Carrier movement reacts only to its own direct vision — drone scouts
+        inform combat targeting but not carrier movement, so it never looks
+        like a maphack to the player.
         """
-        # Flee from player when visible — let drones do the fighting
+        # Flee from player only when carrier itself can see them
         if player_x is not None and player_y is not None:
-            if self._can_see(player_x, player_y):
+            if self._carrier_can_see(player_x, player_y):
                 dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
                 if dist_to_player > 0:
                     return (-(player_x - self.x) / dist_to_player,
