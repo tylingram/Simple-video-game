@@ -5,10 +5,15 @@ Run this file directly or let main.py launch it automatically.
 """
 import json
 import math
+import sys
 import tkinter as tk
 from pathlib import Path
 
-SAVE_FILE = Path(__file__).parent / "config.json"
+# When frozen by PyInstaller write config next to the .exe (writable);
+# in normal dev use the source directory as before.
+SAVE_FILE = (Path(sys.executable).parent
+             if getattr(sys, 'frozen', False)
+             else Path(__file__).parent) / "config.json"
 
 DEFAULTS = {
     # ── Map ──────────────────────────────────────────────────────────────────
