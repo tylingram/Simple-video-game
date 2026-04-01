@@ -185,9 +185,14 @@ class Drone:
         self._draw_hp(surface, sx, sy, radius_px)
         _draw_hp_bar(surface, sx, sy + radius_px + 2,
                      radius_px * 2, self.hp, self.max_hp)
-        # Cooldown recharge arc — sweeps clockwise from top as cooldown drains
-        if self.fire_cooldown > 0 and self.fire_cooldown_max > 0:
-            frac   = min(1.0, self.fire_cooldown / self.fire_cooldown_max)
+        # Cooldown recharge arc — sweeps clockwise from top as cooldown drains.
+        # Use current mode's full cooldown as the denominator so the arc always
+        # reflects how long THIS mode takes, regardless of when the drone last fired.
+        if self.fire_cooldown > 0:
+            mode_max = (1.0 / cfg.get("EXPLOSIVE_FIRE_RATE")
+                        if self.missile_type == 'explosive'
+                        else 1.0 / cfg.get("MISSILE_FIRE_RATE"))
+            frac   = min(1.0, self.fire_cooldown / mode_max)
             arc_r  = radius_px + (9 if self.missile_type == 'explosive' else 5)
             arc_rect = pygame.Rect(sx - arc_r, sy - arc_r, arc_r * 2, arc_r * 2)
             # pygame angles: 0=right, CCW. We want CW sweep from top.
