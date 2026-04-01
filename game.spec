@@ -28,7 +28,7 @@ _COMMON_EXCLUDES = [
 main_a = Analysis(
     ['rts-game/main.py'],
     pathex=['rts-game'],
-    datas=[],
+    datas=[('rts-game/config.defaults.json', '.')],
     hiddenimports=[],
     excludes=_COMMON_EXCLUDES + ['tkinter'],  # editor handles tkinter separately
     noarchive=False,
