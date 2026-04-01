@@ -14,7 +14,7 @@
 
 _COMMON_EXCLUDES = [
     # web / network / email — not used by a local game
-    'email', 'html', 'http', 'urllib', 'xml', 'xmlrpc',
+    'email', 'html', 'http', 'xml', 'xmlrpc',
     'ftplib', 'imaplib', 'poplib', 'smtplib', 'ssl',
     # database
     'sqlite3',
