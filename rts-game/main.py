@@ -431,19 +431,7 @@ def main():
         for drone in drones:
             dsx, dsy = drone.screen_pos(game_h)
             draw_dotted_circle(screen, PLAYER_ATTACK_COLOR, dsx, dsy, d_atk_px)
-        # Enemy carriers (fog hides them when out of vision)
-        for ec in enemy_carriers:
-            esx = int((ec.x - camera_x_mm) * px_per_mm)
-            esy = int((ec.y - camera_y_mm) * px_per_mm)
-            draw_dotted_circle(screen, ENEMY_ATTACK_COLOR, esx, esy, c_atk_px)
-        # Enemy drones
-        for ec, ed in zip(enemy_carriers, enemy_drones_list):
-            for drone in ed:
-                ewx = ec.x + drone.offset_x
-                ewy = ec.y + drone.offset_y
-                esx = int((ewx - camera_x_mm) * px_per_mm)
-                esy = int((ewy - camera_y_mm) * px_per_mm)
-                draw_dotted_circle(screen, ENEMY_ATTACK_COLOR, esx, esy, d_atk_px)
+        # Enemy attack-range circles intentionally not drawn — hidden from player
 
         fog.draw(screen, game_h, vision_circles)
 
