@@ -67,15 +67,31 @@ class EnemyCarrier:
     # AI input — swap this method out for network/keyboard input later
     # ------------------------------------------------------------------
 
-    def _command_drones(self):
-        """Send each drone to a random position; randomly assign missile types."""
-        max_r = cfg.get("DRONE_MAX_RADIUS_MM") * 0.8
-        ratio = cfg.get("ENEMY_EXPLOSIVE_DRONE_RATIO")
-        for drone in self.drones:
-            angle = random.uniform(0, 2 * math.pi)
-            r     = random.uniform(0, max_r)
-            drone.set_target(r * math.cos(angle), r * math.sin(angle))
-            drone.missile_type = 'explosive' if random.random() < ratio else 'normal'
+    def _command_drones(self, player_visible=False):
+        """
+        Split drones: ~60% stay close as normal-missile guards,
+        ~40% spread far as scouts (explosive when player is visible).
+        """
+        n = len(self.drones)
+        if n == 0:
+            return
+        max_r    = cfg.get("DRONE_MAX_RADIUS_MM")
+        n_guards = max(1, int(n * 0.6))
+        close_r  = max_r * 0.3
+
+        for i, drone in enumerate(self.drones):
+            if i < n_guards:
+                # Guard — tight cluster around carrier, always normal
+                angle = 2 * math.pi * i / n_guards
+                r     = random.uniform(close_r * 0.4, close_r)
+                drone.set_target(r * math.cos(angle), r * math.sin(angle))
+                drone.missile_type = 'normal'
+            else:
+                # Scout — spread far, explosive only when they can see the player
+                angle = random.uniform(0, 2 * math.pi)
+                r     = random.uniform(max_r * 0.6, max_r * 0.9)
+                drone.set_target(r * math.cos(angle), r * math.sin(angle))
+                drone.missile_type = 'explosive' if player_visible else 'normal'
 
     def _pick_waypoint(self):
         """Choose a random destination well inside the island."""
@@ -108,13 +124,13 @@ class EnemyCarrier:
         the player's fog-of-war), otherwise wander between random waypoints.
         Replace with e.g. network packet parsing for multiplayer.
         """
-        # Chase player only if this carrier can actually see them
+        # Flee from player when visible — let drones do the fighting
         if player_x is not None and player_y is not None:
             if self._can_see(player_x, player_y):
                 dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
                 if dist_to_player > 0:
-                    return ((player_x - self.x) / dist_to_player,
-                            (player_y - self.y) / dist_to_player)
+                    return (-(player_x - self.x) / dist_to_player,
+                            -(player_y - self.y) / dist_to_player)
                 return 0.0, 0.0
 
         # Default: wander between random waypoints
@@ -138,6 +154,8 @@ class EnemyCarrier:
         accel     = cfg.get("CARRIER_ACCELERATION")
         top_speed = cfg.get("CARRIER_TOP_SPEED")
 
+        player_visible = (player_x is not None and player_y is not None
+                          and self._can_see(player_x, player_y))
         ix, iy = self._think(player_x, player_y)   # input: unit direction vector (or 0,0)
 
         def apply_axis(v, d):
@@ -165,7 +183,7 @@ class EnemyCarrier:
         if self._drone_timer >= self._drone_interval:
             self._drone_timer    = 0.0
             self._drone_interval = random.uniform(2.0, 5.0)
-            self._command_drones()
+            self._command_drones(player_visible)
 
         # Trail — record position, age points, evict faded ones
         self._trail_dist += math.hypot(self.vx * dt, self.vy * dt)

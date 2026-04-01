@@ -163,6 +163,8 @@ class Drone:
         sy = int((wy - camera_y_mm) * px)
         if (-radius_px <= sx < settings.SCREEN_WIDTH + radius_px and
                 -radius_px <= sy < game_h + radius_px):
+            if self.missile_type == 'explosive':
+                pygame.draw.circle(surface, GLOW_EXPLOSIVE, (sx, sy), radius_px + 6, 2)
             pygame.draw.circle(surface, COLOR_ENEMY,  (sx, sy), radius_px)
             pygame.draw.circle(surface, BORDER_ENEMY, (sx, sy), radius_px, 1)
             self._draw_hp(surface, sx, sy, radius_px)
