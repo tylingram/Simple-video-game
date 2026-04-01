@@ -86,18 +86,30 @@ class EnemyCarrier:
         self._target_x = cx + r * math.cos(angle)
         self._target_y = cy + r * math.sin(angle)
 
+    def _can_see(self, wx, wy):
+        """True if (wx, wy) is within this carrier's or its drones' vision."""
+        carrier_vis_sq = cfg.get("CARRIER_VISION_RADIUS_MM") ** 2
+        drone_vis_sq   = cfg.get("DEFAULT_DRONE_VISION_MM")  ** 2
+        if (wx - self.x) ** 2 + (wy - self.y) ** 2 <= carrier_vis_sq:
+            return True
+        for d in self.drones:
+            dx = self.x + d.offset_x - wx
+            dy = self.y + d.offset_y - wy
+            if dx * dx + dy * dy <= drone_vis_sq:
+                return True
+        return False
+
     def _think(self, player_x=None, player_y=None):
         """
-        Return (dx, dy) in [-1, 1] representing the desired movement direction.
-        AI implementation: chase the player when within ENEMY_AGGRO_RANGE_MM,
-        otherwise wander between random waypoints.
+        Return (dx, dy) in [-1 ,1] representing the desired movement direction.
+        AI implementation: chase the player when visible (same vision rules as
+        the player's fog-of-war), otherwise wander between random waypoints.
         Replace with e.g. network packet parsing for multiplayer.
         """
-        # Chase player if they are within aggro range
+        # Chase player only if this carrier can actually see them
         if player_x is not None and player_y is not None:
-            aggro = cfg.get("ENEMY_AGGRO_RANGE_MM")
-            dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
-            if dist_to_player <= aggro:
+            if self._can_see(player_x, player_y):
+                dist_to_player = math.hypot(player_x - self.x, player_y - self.y)
                 if dist_to_player > 0:
                     return ((player_x - self.x) / dist_to_player,
                             (player_y - self.y) / dist_to_player)
