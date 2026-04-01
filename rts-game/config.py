@@ -115,6 +115,22 @@ _defaults = {
         "value": 150.0,
         "description": "Range in mm at which an enemy carrier will chase the player",
     },
+    "EXPLOSIVE_BLAST_RADIUS_MM": {
+        "value": 10.0,
+        "description": "Blast radius of explosive missiles in mm",
+    },
+    "EXPLOSIVE_DAMAGE": {
+        "value": 1.0,
+        "description": "Damage dealt to each unit caught in the blast radius",
+    },
+    "EXPLOSIVE_FIRE_RATE": {
+        "value": 0.25,
+        "description": "Explosive missiles fired per second per unit (1 every 4 s)",
+    },
+    "ENEMY_EXPLOSIVE_DRONE_RATIO": {
+        "value": 0.3,
+        "description": "Fraction of enemy drones randomly assigned explosive missiles (0–1)",
+    },
 }
 
 

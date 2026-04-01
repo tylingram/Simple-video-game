@@ -11,7 +11,7 @@ from fog_of_war import FogOfWar
 from units.carrier import Carrier
 from units.enemy_carrier import EnemyCarrier
 from units.drone import create_formation
-from units.missile import Missile
+from units.missile import Missile, Explosion
 import config as cfg
 
 WINDOWED_W = 1280
@@ -205,10 +205,17 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
     shooter.fire_cooldown -= dt
     if shooter.fire_cooldown > 0 or not targets:
         return
-    shooter.fire_cooldown = 1.0 / cfg.get("MISSILE_FIRE_RATE")
     unit, cref = _nearest_enemy(sx, sy, targets, can_see, attack_range)
     if unit is not None:
-        missiles.append(Missile(sx, sy, unit, cref, team))
+        explosive = getattr(shooter, 'missile_type', 'normal') == 'explosive'
+        rate      = cfg.get("EXPLOSIVE_FIRE_RATE") if explosive else cfg.get("MISSILE_FIRE_RATE")
+        cooldown  = 1.0 / rate
+        shooter.fire_cooldown = cooldown
+        if hasattr(shooter, 'fire_cooldown_max'):
+            shooter.fire_cooldown_max = cooldown
+        if hasattr(shooter, 'has_fired'):
+            shooter.has_fired = True
+        missiles.append(Missile(sx, sy, unit, cref, team, explosive=explosive))
 
 
 def main():
@@ -236,9 +243,12 @@ def main():
     drones            = create_formation()
     launch_config_editor()
     missiles   = []
+    explosions = []
     game_state = 'playing'  # 'playing' | 'won' | 'lost'
     paused     = False
     kills      = 0
+    _last_click_drone = None
+    _last_click_time  = 0
 
     # Track config.json modification time to reload when editor saves
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
@@ -264,10 +274,13 @@ def main():
                 enemy_carriers    = [EnemyCarrier(sx, sy, ed)
                                      for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
                 drones            = create_formation()
-                missiles   = []
-                game_state = 'playing'
-                paused     = False
-                kills      = 0
+                missiles          = []
+                explosions        = []
+                game_state        = 'playing'
+                paused            = False
+                kills             = 0
+                _last_click_drone = None
+                _last_click_time  = 0
                 fog.reset()
                 last_mtime = mtime
         except OSError:
@@ -292,13 +305,12 @@ def main():
                 elif event.key == pygame.K_RETURN and game_state != 'playing':
                     (enemy_carriers, enemy_drones_list,
                      drones, missiles) = _reset_game(game_map, ponds, fog, carrier)
-                    kills      = 0
-                    game_state = 'playing'
-                    paused     = False
-                elif event.key == pygame.K_a and game_state == 'playing' and not paused:
-                    all_sel = all(d.selected for d in drones) if drones else False
-                    for d in drones:
-                        d.selected = not all_sel
+                    kills             = 0
+                    explosions        = []
+                    game_state        = 'playing'
+                    paused            = False
+                    _last_click_drone = None
+                    _last_click_time  = 0
                 elif event.key == pygame.K_r and game_state == 'playing' and not paused:
                     n = len(drones)
                     if n > 0:
@@ -321,12 +333,23 @@ def main():
                     hit = next((d for d in drones
                                 if d.is_clicked(mx, my, game_h)), None)
                     if hit:
-                        # Toggle selection; deselect all others
-                        already_selected = hit.selected
-                        for d in drones:
-                            d.selected = False
-                        hit.selected = not already_selected
+                        now = pygame.time.get_ticks()
+                        if hit is _last_click_drone and now - _last_click_time < 300:
+                            # Double-click: toggle missile type
+                            hit.missile_type = (
+                                'explosive' if hit.missile_type == 'normal' else 'normal'
+                            )
+                            _last_click_drone = None   # reset so triple-click doesn't re-toggle
+                        else:
+                            # Single click: toggle selection; deselect all others
+                            already_selected = hit.selected
+                            for d in drones:
+                                d.selected = False
+                            hit.selected = not already_selected
+                            _last_click_drone = hit
+                            _last_click_time  = now
                     else:
+                        _last_click_drone = None
                         # Move selected drone to clicked position
                         sel = next((d for d in drones if d.selected), None)
                         if sel:
@@ -438,9 +461,23 @@ def main():
                                     ec_can_see, d_range)
 
             # Update missiles and remove spent ones
+            # Build world-pos list for explosive splash damage
+            splash_targets = (
+                [(carrier, carrier.x, carrier.y)] +
+                [(d, carrier.x + d.offset_x, carrier.y + d.offset_y) for d in drones] +
+                [(ec, ec.x, ec.y) for ec in enemy_carriers] +
+                [(d, ec.x + d.offset_x, ec.y + d.offset_y)
+                 for ec, ed in zip(enemy_carriers, enemy_drones_list) for d in ed]
+            )
             for m in missiles:
-                m.update(dt)
+                m.update(dt, splash_targets)
+                if not m.alive and m.explosive and m.impact_x is not None:
+                    explosions.append(Explosion(m.impact_x, m.impact_y))
             missiles = [m for m in missiles if m.alive]
+
+            for exp in explosions:
+                exp.update(dt)
+            explosions = [e for e in explosions if not e.done]
 
             # Remove dead player drones; carrier death wipes all of its drones
             drones = [d for d in drones if d.hp > 0]
@@ -505,9 +542,11 @@ def main():
                 if player_can_see(wx, wy):
                     drone.draw_world(screen, ec.x, ec.y,
                                      camera_x_mm, camera_y_mm, game_h)
-        # Missiles — drawn above units, below fog
+        # Missiles and explosions — drawn above units, below fog
         for m in missiles:
             m.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+        for exp in explosions:
+            exp.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
 
         # Attack-range dotted circles — drawn under fog so enemy circles are
         # automatically hidden wherever the fog has not been lifted.

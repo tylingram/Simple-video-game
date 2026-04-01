@@ -3,9 +3,71 @@ import pygame
 import settings
 import config as cfg
 
-PLAYER_COLOR = (100, 220, 255)   # cyan  — player missiles
-ENEMY_COLOR  = (255, 160,  40)   # orange — enemy missiles
-RADIUS_PX    = 3
+PLAYER_COLOR    = (100, 220, 255)   # cyan  — player missiles
+ENEMY_COLOR     = (255, 160,  40)   # orange — enemy missiles
+EXPLOSIVE_COLOR = (255, 230,  60)   # bright yellow — explosive missiles
+RADIUS_PX       = 3
+
+EXPLOSION_DURATION = 0.45   # seconds the animation plays
+EXPLOSION_MIN_PX   = 28     # minimum screen radius so it's always visible
+
+
+class Explosion:
+    """Brief expanding flash drawn when an explosive missile hits."""
+
+    def __init__(self, x, y):
+        self.x    = float(x)
+        self.y    = float(y)
+        self.age  = 0.0
+        self.done = False
+
+    def update(self, dt):
+        self.age += dt
+        if self.age >= EXPLOSION_DURATION:
+            self.done = True
+
+    def draw(self, surface, camera_x_mm, camera_y_mm, game_h, px):
+        if self.done:
+            return
+        t        = self.age / EXPLOSION_DURATION   # 0 → 1
+        sx = int((self.x - camera_x_mm) * px)
+        sy = int((self.y - camera_y_mm) * px)
+        blast_r  = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
+        max_r_px = max(EXPLOSION_MIN_PX, int(blast_r * px))
+        if not (-max_r_px <= sx < settings.SCREEN_WIDTH + max_r_px and
+                -max_r_px <= sy < game_h + max_r_px):
+            return
+
+        # --- flash layers, drawn back-to-front ---
+        # 1. Outer shockwave ring — expands full radius, fades out
+        ring_r = max(2, int(max_r_px * t))
+        ring_a = int(220 * (1.0 - t))
+        ring_surf = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surf, (255, 140, 0, ring_a),
+                           (ring_r + 2, ring_r + 2), ring_r, max(2, ring_r // 4))
+        surface.blit(ring_surf, (sx - ring_r - 2, sy - ring_r - 2))
+
+        # 2. Mid fireball — expands to 60% then contracts
+        fire_t  = t * 2 if t < 0.5 else 2.0 - t * 2   # 0→1→0
+        fire_r  = max(2, int(max_r_px * 0.6 * fire_t))
+        fire_a  = int(240 * fire_t)
+        if fire_r > 0:
+            fire_surf = pygame.Surface((fire_r * 2 + 2, fire_r * 2 + 2), pygame.SRCALPHA)
+            fr = max(0, min(255, int(255)))
+            fg = max(0, min(255, int(180 * fire_t)))
+            pygame.draw.circle(fire_surf, (fr, fg, 20, fire_a),
+                               (fire_r + 1, fire_r + 1), fire_r)
+            surface.blit(fire_surf, (sx - fire_r - 1, sy - fire_r - 1))
+
+        # 3. Bright white/yellow core — only first 40% of duration
+        if t < 0.4:
+            core_frac = 1.0 - t / 0.4
+            core_r    = max(2, int(max_r_px * 0.3 * core_frac))
+            core_a    = int(255 * core_frac)
+            core_surf = pygame.Surface((core_r * 2 + 2, core_r * 2 + 2), pygame.SRCALPHA)
+            pygame.draw.circle(core_surf, (255, 255, 200, core_a),
+                               (core_r + 1, core_r + 1), core_r)
+            surface.blit(core_surf, (sx - core_r - 1, sy - core_r - 1))
 
 
 class Missile:
@@ -14,15 +76,20 @@ class Missile:
     target      — the unit object being tracked (Drone or Carrier/EnemyCarrier)
     carrier_ref — the carrier that owns the target if target is a Drone, else None
     team        — 'player' or 'enemy' (controls colour)
+    explosive   — if True, splashes MISSILE_DAMAGE to all units within
+                  EXPLOSIVE_BLAST_RADIUS_MM of the impact point on hit
     """
 
-    def __init__(self, x, y, target, carrier_ref, team):
+    def __init__(self, x, y, target, carrier_ref, team, explosive=False):
         self.x           = float(x)
         self.y           = float(y)
         self.target      = target
         self.carrier_ref = carrier_ref
         self.team        = team
+        self.explosive   = explosive
         self.alive       = True
+        self.impact_x    = None   # set to world pos when explosive hits
+        self.impact_y    = None
 
     def _target_pos(self):
         if self.carrier_ref is not None:
@@ -30,7 +97,7 @@ class Missile:
                     self.carrier_ref.y + self.target.offset_y)
         return (self.target.x, self.target.y)
 
-    def update(self, dt):
+    def update(self, dt, splash_targets=None):
         if not self.alive:
             return
         if self.target.hp <= 0:
@@ -42,6 +109,15 @@ class Missile:
         move   = cfg.get("MISSILE_SPEED_MM") * dt
         if dist <= move:
             self.target.hp -= cfg.get("MISSILE_DAMAGE")
+            if self.explosive and splash_targets:
+                blast_r  = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
+                splash_d = cfg.get("EXPLOSIVE_DAMAGE")
+                for unit, wx, wy in splash_targets:
+                    if unit is not self.target and unit.hp > 0:
+                        if math.hypot(wx - tx, wy - ty) <= blast_r:
+                            unit.hp -= splash_d
+                self.impact_x = tx
+                self.impact_y = ty
             self.alive = False
         else:
             self.x += dx / dist * move
@@ -54,5 +130,9 @@ class Missile:
         sy = int((self.y - camera_y_mm) * px)
         if -RADIUS_PX <= sx < settings.SCREEN_WIDTH + RADIUS_PX and \
            -RADIUS_PX <= sy < game_h + RADIUS_PX:
-            color = PLAYER_COLOR if self.team == 'player' else ENEMY_COLOR
-            pygame.draw.circle(surface, color, (sx, sy), RADIUS_PX)
+            if self.explosive:
+                color = EXPLOSIVE_COLOR
+            else:
+                color = PLAYER_COLOR if self.team == 'player' else ENEMY_COLOR
+            r = RADIUS_PX + 1 if self.explosive else RADIUS_PX
+            pygame.draw.circle(surface, color, (sx, sy), r)
