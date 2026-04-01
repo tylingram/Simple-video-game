@@ -68,12 +68,14 @@ class EnemyCarrier:
     # ------------------------------------------------------------------
 
     def _command_drones(self):
-        """Send each drone to a random position within the max patrol radius."""
+        """Send each drone to a random position; randomly assign missile types."""
         max_r = cfg.get("DRONE_MAX_RADIUS_MM") * 0.8
+        ratio = cfg.get("ENEMY_EXPLOSIVE_DRONE_RATIO")
         for drone in self.drones:
             angle = random.uniform(0, 2 * math.pi)
             r     = random.uniform(0, max_r)
             drone.set_target(r * math.cos(angle), r * math.sin(angle))
+            drone.missile_type = 'explosive' if random.random() < ratio else 'normal'
 
     def _pick_waypoint(self):
         """Choose a random destination well inside the island."""

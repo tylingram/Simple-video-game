@@ -5,13 +5,14 @@ import settings
 import config as cfg
 
 # Visual style
-COLOR_NORMAL    = (65,  155, 230)   # vivid steel-blue
-BORDER_NORMAL   = (130, 200, 255)
-COLOR_SELECTED  = (70,  220, 80)
-BORDER_SELECTED = (130, 255, 140)
-GLOW_SELECTED   = (50,  180, 60)    # outer glow ring colour when selected
-COLOR_ENEMY     = (210,  65,  65)   # crimson — matches enemy carrier hue
-BORDER_ENEMY    = (255, 130, 130)
+COLOR_NORMAL      = (65,  155, 230)   # vivid steel-blue
+BORDER_NORMAL     = (130, 200, 255)
+COLOR_SELECTED    = (70,  220, 80)
+BORDER_SELECTED   = (130, 255, 140)
+GLOW_SELECTED     = (50,  180, 60)    # outer glow ring colour when selected
+COLOR_ENEMY       = (210,  65,  65)   # crimson — matches enemy carrier hue
+BORDER_ENEMY      = (255, 130, 130)
+GLOW_EXPLOSIVE    = (255, 160,  40)   # orange ring — explosive missile mode
 
 ARRIVE_THRESHOLD_MM = 0.3   # stop when this close to target (mm)
 HP_TEXT_COLOR       = (255, 255, 255)
@@ -53,7 +54,8 @@ class Drone:
         self.target_y = offset_y_mm
         self.vel_x    = 0.0            # velocity relative to carrier (mm/s)
         self.vel_y    = 0.0
-        self.selected = False
+        self.selected      = False
+        self.missile_type  = 'normal'   # 'normal' | 'explosive'
         self.hp            = cfg.get("DRONE_HP")
         self.max_hp        = self.hp
         self.fire_cooldown = random.uniform(0.0, 1.0)
@@ -171,8 +173,11 @@ class Drone:
         sx, sy    = self.screen_pos(game_h)
         c = COLOR_SELECTED  if self.selected else COLOR_NORMAL
         b = BORDER_SELECTED if self.selected else BORDER_NORMAL
+        if self.missile_type == 'explosive':
+            # Outermost ring — explosive mode indicator
+            pygame.draw.circle(surface, GLOW_EXPLOSIVE, (sx, sy), radius_px + 6, 2)
         if self.selected:
-            # Outer glow ring — drawn before the fill so it sits behind
+            # Selection glow ring — sits between explosive ring and body
             pygame.draw.circle(surface, GLOW_SELECTED, (sx, sy), radius_px + 3, 2)
         pygame.draw.circle(surface, c, (sx, sy), radius_px)
         pygame.draw.circle(surface, b, (sx, sy), radius_px, 1)
