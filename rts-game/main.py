@@ -11,7 +11,7 @@ from fog_of_war import FogOfWar
 from units.carrier import Carrier
 from units.enemy_carrier import EnemyCarrier
 from units.drone import create_formation
-from units.missile import Missile
+from units.missile import Missile, Explosion
 import config as cfg
 
 WINDOWED_W = 1280
@@ -207,7 +207,10 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
         return
     explosive = getattr(shooter, 'missile_type', 'normal') == 'explosive'
     rate = cfg.get("EXPLOSIVE_FIRE_RATE") if explosive else cfg.get("MISSILE_FIRE_RATE")
-    shooter.fire_cooldown = 1.0 / rate
+    cooldown = 1.0 / rate
+    shooter.fire_cooldown = cooldown
+    if hasattr(shooter, 'fire_cooldown_max'):
+        shooter.fire_cooldown_max = cooldown
     unit, cref = _nearest_enemy(sx, sy, targets, can_see, attack_range)
     if unit is not None:
         missiles.append(Missile(sx, sy, unit, cref, team, explosive=explosive))
@@ -238,6 +241,7 @@ def main():
     drones            = create_formation()
     launch_config_editor()
     missiles   = []
+    explosions = []
     game_state = 'playing'  # 'playing' | 'won' | 'lost'
     paused     = False
     kills      = 0
@@ -269,6 +273,7 @@ def main():
                                      for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
                 drones            = create_formation()
                 missiles          = []
+                explosions        = []
                 game_state        = 'playing'
                 paused            = False
                 kills             = 0
@@ -299,6 +304,7 @@ def main():
                     (enemy_carriers, enemy_drones_list,
                      drones, missiles) = _reset_game(game_map, ponds, fog, carrier)
                     kills             = 0
+                    explosions        = []
                     game_state        = 'playing'
                     paused            = False
                     _last_click_drone = None
@@ -463,7 +469,13 @@ def main():
             )
             for m in missiles:
                 m.update(dt, splash_targets)
+                if not m.alive and m.explosive and m.impact_x is not None:
+                    explosions.append(Explosion(m.impact_x, m.impact_y))
             missiles = [m for m in missiles if m.alive]
+
+            for exp in explosions:
+                exp.update(dt)
+            explosions = [e for e in explosions if not e.done]
 
             # Remove dead player drones; carrier death wipes all of its drones
             drones = [d for d in drones if d.hp > 0]
@@ -528,9 +540,11 @@ def main():
                 if player_can_see(wx, wy):
                     drone.draw_world(screen, ec.x, ec.y,
                                      camera_x_mm, camera_y_mm, game_h)
-        # Missiles — drawn above units, below fog
+        # Missiles and explosions — drawn above units, below fog
         for m in missiles:
             m.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+        for exp in explosions:
+            exp.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
 
         # Attack-range dotted circles — drawn under fog so enemy circles are
         # automatically hidden wherever the fog has not been lifted.

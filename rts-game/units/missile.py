@@ -8,6 +8,46 @@ ENEMY_COLOR     = (255, 160,  40)   # orange — enemy missiles
 EXPLOSIVE_COLOR = (255, 230,  60)   # bright yellow — explosive missiles
 RADIUS_PX       = 3
 
+EXPLOSION_DURATION = 0.35   # seconds the animation plays
+
+
+class Explosion:
+    """Brief expanding ring drawn when an explosive missile hits."""
+
+    def __init__(self, x, y):
+        self.x    = float(x)
+        self.y    = float(y)
+        self.age  = 0.0
+        self.done = False
+
+    def update(self, dt):
+        self.age += dt
+        if self.age >= EXPLOSION_DURATION:
+            self.done = True
+
+    def draw(self, surface, camera_x_mm, camera_y_mm, game_h, px):
+        if self.done:
+            return
+        t         = self.age / EXPLOSION_DURATION          # 0 → 1
+        blast_r   = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
+        max_r_px  = max(2, int(blast_r * px))
+        cur_r_px  = max(1, int(max_r_px * t))
+        alpha     = int(255 * (1.0 - t))
+        sx = int((self.x - camera_x_mm) * px)
+        sy = int((self.y - camera_y_mm) * px)
+        if not (-max_r_px <= sx < settings.SCREEN_WIDTH + max_r_px and
+                -max_r_px <= sy < game_h + max_r_px):
+            return
+        # Outer expanding ring fades out
+        r = max(0, min(255, int(255 * (1.0 - t * 0.5))))
+        g = max(0, min(255, int(200 * (1.0 - t))))
+        color = (r, g, 0)
+        pygame.draw.circle(surface, color, (sx, sy), cur_r_px, max(1, cur_r_px // 4))
+        # Bright core that shrinks
+        core_r = max(1, int(max_r_px * 0.3 * (1.0 - t)))
+        if core_r > 0:
+            pygame.draw.circle(surface, (255, 240, 100), (sx, sy), core_r)
+
 
 class Missile:
     """
@@ -27,6 +67,8 @@ class Missile:
         self.team        = team
         self.explosive   = explosive
         self.alive       = True
+        self.impact_x    = None   # set to world pos when explosive hits
+        self.impact_y    = None
 
     def _target_pos(self):
         if self.carrier_ref is not None:
@@ -53,6 +95,8 @@ class Missile:
                     if unit is not self.target and unit.hp > 0:
                         if math.hypot(wx - tx, wy - ty) <= blast_r:
                             unit.hp -= splash_d
+                self.impact_x = tx
+                self.impact_y = ty
             self.alive = False
         else:
             self.x += dx / dist * move

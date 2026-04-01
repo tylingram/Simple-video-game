@@ -54,11 +54,12 @@ class Drone:
         self.target_y = offset_y_mm
         self.vel_x    = 0.0            # velocity relative to carrier (mm/s)
         self.vel_y    = 0.0
-        self.selected      = False
-        self.missile_type  = 'normal'   # 'normal' | 'explosive'
-        self.hp            = cfg.get("DRONE_HP")
-        self.max_hp        = self.hp
-        self.fire_cooldown = random.uniform(0.0, 1.0)
+        self.selected           = False
+        self.missile_type       = 'normal'   # 'normal' | 'explosive'
+        self.hp                 = cfg.get("DRONE_HP")
+        self.max_hp             = self.hp
+        self.fire_cooldown      = random.uniform(0.0, 1.0)
+        self.fire_cooldown_max  = 1.0   # updated when a shot is fired
 
     # ── Commanding ────────────────────────────────────────────────────────────
 
@@ -184,6 +185,17 @@ class Drone:
         self._draw_hp(surface, sx, sy, radius_px)
         _draw_hp_bar(surface, sx, sy + radius_px + 2,
                      radius_px * 2, self.hp, self.max_hp)
+        # Cooldown recharge arc — sweeps clockwise from top as cooldown drains
+        if self.fire_cooldown > 0 and self.fire_cooldown_max > 0:
+            frac   = min(1.0, self.fire_cooldown / self.fire_cooldown_max)
+            arc_r  = radius_px + (9 if self.missile_type == 'explosive' else 5)
+            arc_rect = pygame.Rect(sx - arc_r, sy - arc_r, arc_r * 2, arc_r * 2)
+            # pygame angles: 0=right, CCW. We want CW sweep from top.
+            start_a = math.pi / 2                     # top (12 o'clock)
+            end_a   = math.pi / 2 + 2 * math.pi * frac
+            if end_a > start_a:
+                arc_color = (200, 200, 80) if self.missile_type == 'explosive' else (160, 200, 255)
+                pygame.draw.arc(surface, arc_color, arc_rect, start_a, end_a, 2)
 
 
 # ── Formation factory ─────────────────────────────────────────────────────────
