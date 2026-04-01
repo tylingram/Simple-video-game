@@ -295,10 +295,6 @@ def main():
                     kills      = 0
                     game_state = 'playing'
                     paused     = False
-                elif event.key == pygame.K_a and game_state == 'playing' and not paused:
-                    all_sel = all(d.selected for d in drones) if drones else False
-                    for d in drones:
-                        d.selected = not all_sel
                 elif event.key == pygame.K_r and game_state == 'playing' and not paused:
                     n = len(drones)
                     if n > 0:
