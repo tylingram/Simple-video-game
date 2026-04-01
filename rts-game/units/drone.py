@@ -60,6 +60,7 @@ class Drone:
         self.max_hp             = self.hp
         self.fire_cooldown      = random.uniform(0.0, 1.0)
         self.fire_cooldown_max  = 1.0   # updated when a shot is fired
+        self.has_fired          = False  # arc only shown after first shot
 
     # ── Commanding ────────────────────────────────────────────────────────────
 
@@ -185,10 +186,8 @@ class Drone:
         self._draw_hp(surface, sx, sy, radius_px)
         _draw_hp_bar(surface, sx, sy + radius_px + 2,
                      radius_px * 2, self.hp, self.max_hp)
-        # Cooldown recharge arc — sweeps clockwise from top as cooldown drains.
-        # Use current mode's full cooldown as the denominator so the arc always
-        # reflects how long THIS mode takes, regardless of when the drone last fired.
-        if self.fire_cooldown > 0:
+        # Cooldown recharge arc — only visible while reloading after a shot.
+        if self.has_fired and self.fire_cooldown > 0:
             mode_max = (1.0 / cfg.get("EXPLOSIVE_FIRE_RATE")
                         if self.missile_type == 'explosive'
                         else 1.0 / cfg.get("MISSILE_FIRE_RATE"))
