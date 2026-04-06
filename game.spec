@@ -18,8 +18,8 @@ _COMMON_EXCLUDES = [
     'ftplib', 'imaplib', 'poplib', 'smtplib', 'ssl',
     # database
     'sqlite3',
-    # async / parallel
-    'asyncio', 'concurrent', 'multiprocessing',
+    # parallel (not used)
+    'multiprocessing',
     # dev / test tooling
     'unittest', 'doctest', 'pydoc', 'test', 'lib2to3',
 ]
