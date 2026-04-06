@@ -26,7 +26,7 @@ jobs:
         run: pip install pygbag
 
       - name: Build web bundle
-        run: python -m pygbag --build --width 1280 --height 720 --app_name "Island RTS" rts-game/main.py
+        run: python -m pygbag --build --app_name "Island RTS" rts-game/main.py
 
       - name: Patch HTML for fullscreen layout
         run: |
@@ -34,31 +34,12 @@ jobs:
           import pathlib
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
-          # Inject JS that runs on a timer and overrides pygbag's inline canvas styles
-          inject = """<script>
-          (function(){
-            function fix(){
-              var c=document.getElementById('canvas');
-              if(c){
-                c.style.setProperty('position','fixed','important');
-                c.style.setProperty('top','0','important');
-                c.style.setProperty('left','0','important');
-                c.style.setProperty('width','100vw','important');
-                c.style.setProperty('height','100vh','important');
-                c.style.setProperty('z-index','9999','important');
-              }
-              document.body.style.setProperty('background','#000','important');
-              document.body.style.setProperty('overflow','hidden','important');
-              ['pyconsole','crt','transfer','infobox'].forEach(function(id){
-                var el=document.getElementById(id);
-                if(el) el.style.setProperty('display','none','important');
-              });
-            }
-            setInterval(fix, 50);
-            document.addEventListener('DOMContentLoaded', fix);
-            window.addEventListener('load', fix);
-          })();
-          </script>"""
+          # Black background, hide terminal UI elements
+          html = html.replace('background-color:powderblue', 'background-color:#000')
+          inject = """<style>
+          body { background:#000 !important; overflow:hidden; }
+          #pyconsole, #crt { display:none !important; }
+          </style>"""
           html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html, encoding='utf-8')
           PYEOF
