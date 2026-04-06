@@ -26,7 +26,18 @@ jobs:
         run: pip install pygbag
 
       - name: Build web bundle
-        run: python -m pygbag --build --app_name "Island RTS" rts-game/main.py
+        run: python -m pygbag --build --width 1280 --height 720 --app_name "Island RTS" rts-game/main.py
+
+      - name: Patch HTML for fullscreen layout
+        run: |
+          python3 -c "
+          import pathlib
+          p = pathlib.Path('rts-game/build/web/index.html')
+          html = p.read_text()
+          css = '<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;}canvas{display:block;width:100vw;height:100vh;object-fit:contain;}</style>'
+          html = html.replace('</head>', css + '</head>', 1)
+          p.write_text(html)
+          "
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
