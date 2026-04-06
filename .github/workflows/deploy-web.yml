@@ -30,14 +30,37 @@ jobs:
 
       - name: Patch HTML for fullscreen layout
         run: |
-          python3 -c "
+          python3 - <<'PYEOF'
           import pathlib
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text()
-          css = '<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;}canvas{display:block;width:100vw;height:100vh;object-fit:contain;}</style>'
-          html = html.replace('</head>', css + '</head>', 1)
+          inject = """
+          <style>
+            html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100%; height: 100%; }
+          </style>
+          <script>
+            function fitCanvas() {
+              var c = document.querySelector('canvas');
+              if (!c) return;
+              var gw = 1280, gh = 720;
+              var ww = window.innerWidth, wh = window.innerHeight;
+              var scale = Math.min(ww / gw, wh / gh);
+              var dw = Math.floor(gw * scale), dh = Math.floor(gh * scale);
+              c.style.position = 'fixed';
+              c.style.left = Math.floor((ww - dw) / 2) + 'px';
+              c.style.top  = Math.floor((wh - dh) / 2) + 'px';
+              c.style.width  = dw + 'px';
+              c.style.height = dh + 'px';
+            }
+            window.addEventListener('load',   fitCanvas);
+            window.addEventListener('resize', fitCanvas);
+            setTimeout(fitCanvas, 500);
+            setTimeout(fitCanvas, 1500);
+          </script>
+          """
+          html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html)
-          "
+          PYEOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
