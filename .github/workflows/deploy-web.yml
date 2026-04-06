@@ -35,46 +35,37 @@ jobs:
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
           html = html.replace('background-color:powderblue', 'background-color:#000')
-          # Also patch gui_divider in config — 2 splits canvas to half height
           html = html.replace('gui_divider : 2', 'gui_divider : 1')
           inject = """<style>
           html,body{margin:0;padding:0;background:#000!important;overflow:hidden;}
           #pyconsole,#crt,#transfer{display:none!important;}
           </style>
           <script>
-          // Hijack window_resize before pygbag's CDN JS can define it.
-          // Object.defineProperty means pygbag's "window_resize = function(){...}"
-          // assignments are silently ignored — our version always wins.
           (function(){
             var GW=1280,GH=720;
-            function myResize(){
+            function fit(){
               var c=document.getElementById('canvas');
-              if(!c)return;
+              if(!c||c.width<10)return;
               var sw=window.innerWidth,sh=window.innerHeight;
               var s=Math.min(sw/GW,sh/GH);
               var l=Math.round((sw-GW*s)/2),t=Math.round((sh-GH*s)/2);
-              c.setAttribute('style',
-                'position:fixed;width:'+GW+'px;height:'+GH+'px;'+
-                'left:'+l+'px;top:'+t+'px;'+
-                'transform-origin:top left;transform:scale('+s+');'+
-                'z-index:9999;margin:0;padding:0;');
-              document.body.style.background='#000';
-              ['pyconsole','crt','transfer','infobox'].forEach(function(id){
-                var el=document.getElementById(id);
-                if(el)el.style.display='none';
-              });
+              // Only set transform — don't touch width/height pygbag needs those
+              c.style.position='fixed';
+              c.style.transformOrigin='top left';
+              c.style.transform='scale('+s+')';
+              c.style.left=l+'px';
+              c.style.top=t+'px';
+              c.style.zIndex='9999';
               window.onbeforeunload=null;
             }
-            // Lock window_resize so pygbag cannot overwrite it
-            Object.defineProperty(window,'window_resize',{
-              get:function(){return myResize;},
-              set:function(){},
-              configurable:false
-            });
-            window.addEventListener('resize',myResize);
-            window.addEventListener('load',myResize);
-            setTimeout(myResize,500);
-            setTimeout(myResize,2000);
+            // Wait until pygbag has fully initialized the canvas, then fit
+            function waitAndFit(){
+              var c=document.getElementById('canvas');
+              if(c&&c.width>=1280){ fit(); return; }
+              setTimeout(waitAndFit,200);
+            }
+            window.addEventListener('load',waitAndFit);
+            window.addEventListener('resize',fit);
           })();
           </script>"""
           html = html.replace('</head>', inject + '</head>', 1)
