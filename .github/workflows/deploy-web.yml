@@ -78,6 +78,10 @@ jobs:
             document.addEventListener('DOMContentLoaded', attach);
             window.addEventListener('load', attach);
             setTimeout(attach, 0);
+            // Remove any beforeunload prompt — players shouldn't see "changes may not be saved"
+            window.addEventListener('load', function(){
+              window.onbeforeunload = null;
+            });
           })();
           </script>"""
           html = html.replace('</head>', inject + '</head>', 1)
