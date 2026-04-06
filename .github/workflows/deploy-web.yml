@@ -26,7 +26,7 @@ jobs:
         run: pip install pygbag
 
       - name: Build web bundle
-        run: python -m pygbag --build --app_name "Island RTS" rts-game/main.py
+        run: python -m pygbag --build --width 1280 --height 720 --app_name "Island RTS" rts-game/main.py
 
       - name: Patch HTML for fullscreen layout
         run: |
@@ -34,12 +34,40 @@ jobs:
           import pathlib
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
-          # Black background, hide terminal UI elements
           html = html.replace('background-color:powderblue', 'background-color:#000')
           inject = """<style>
-          body { background:#000 !important; overflow:hidden; }
-          #pyconsole, #crt { display:none !important; }
-          </style>"""
+          html, body { margin:0; padding:0; background:#000 !important; overflow:hidden; width:100%; height:100%; }
+          #pyconsole, #crt, #transfer { display:none !important; }
+          </style>
+          <script>
+          (function(){
+            var GW=1280, GH=720;
+            function scale(){
+              var c=document.getElementById('canvas');
+              if(!c) return;
+              var sw=window.innerWidth, sh=window.innerHeight;
+              var s=Math.min(sw/GW, sh/GH);
+              var tw=Math.round(GW*s), th=Math.round(GH*s);
+              // Use transform scale so we never change the canvas pixel size
+              c.style.position='fixed';
+              c.style.width=GW+'px';
+              c.style.height=GH+'px';
+              c.style.left=Math.round((sw-tw)/2)+'px';
+              c.style.top=Math.round((sh-th)/2)+'px';
+              c.style.transformOrigin='top left';
+              c.style.transform='scale('+s+')';
+              c.style.zIndex='9999';
+              document.body.style.background='#000';
+              ['pyconsole','crt','transfer'].forEach(function(id){
+                var el=document.getElementById(id);
+                if(el) el.style.display='none';
+              });
+            }
+            setInterval(scale, 100);
+            window.addEventListener('resize', scale);
+            window.addEventListener('load', scale);
+          })();
+          </script>"""
           html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html, encoding='utf-8')
           PYEOF
