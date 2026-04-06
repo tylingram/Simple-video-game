@@ -607,4 +607,8 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Windows defaults to ProactorEventLoop which blocks pygame keyboard input
+    # in PyInstaller bundles. Force SelectorEventLoop so get_pressed() works.
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
