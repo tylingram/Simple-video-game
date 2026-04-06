@@ -26,10 +26,12 @@ ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack 
 def make_screen(fullscreen):
     """Recreate the display surface in windowed or fullscreen mode."""
     if sys.platform == 'emscripten':
-        # Fixed internal resolution in browser — CSS handles the visual scaling
-        settings.SCREEN_WIDTH  = WINDOWED_W
-        settings.SCREEN_HEIGHT = WINDOWED_H
-        return pygame.display.set_mode((WINDOWED_W, WINDOWED_H))
+        # Let pygbag size the canvas to the full viewport (gui_divider=1 is patched
+        # into the HTML), then read back the actual dimensions pygame got
+        screen = pygame.display.set_mode((0, 0))
+        settings.SCREEN_WIDTH  = screen.get_width()  or WINDOWED_W
+        settings.SCREEN_HEIGHT = screen.get_height() or WINDOWED_H
+        return screen
     elif fullscreen:
         info = pygame.display.Info()
         settings.SCREEN_WIDTH  = info.current_w

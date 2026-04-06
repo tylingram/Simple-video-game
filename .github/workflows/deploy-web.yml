@@ -36,20 +36,12 @@ jobs:
           html = p.read_text(encoding='utf-8')
           html = html.replace('background-color:powderblue', 'background-color:#000')
           html = html.replace('gui_divider : 2', 'gui_divider : 1')
-          # Replace canvas CSS in the template to be fixed/fullscreen from the start
-          html = html.replace(
-            'canvas.emscripten {\n            border: 0px none;\n            background-color: transparent;\n            width: 100%;\n            height: 100%;\n            z-index: 5;\n\n            padding: 0;\n            margin: 0 auto;\n\n            position: absolute;\n            top: 0;\n            bottom: 0;\n            left: 0;\n            right: 0;\n        }',
-            'canvas.emscripten { border:0; background:transparent; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:9999; padding:0; margin:0; }'
-          )
           inject = """<style>
-          html,body{margin:0;padding:0;width:100%;height:100%;background:#000!important;overflow:hidden;}
+          html,body{margin:0;padding:0;background:#000!important;overflow:hidden;}
           #pyconsole,#crt,#transfer{display:none!important;}
           </style>
           <script>
-          (function(){
-            window.onbeforeunload=null;
-            window.addEventListener('load',function(){ window.onbeforeunload=null; });
-          })();
+          window.addEventListener('load',function(){ window.onbeforeunload=null; });
           </script>"""
           html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html, encoding='utf-8')
