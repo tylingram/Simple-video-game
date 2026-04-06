@@ -348,8 +348,9 @@ async def main():
                             d.selected = False
 
             elif event.type == pygame.WINDOWRESIZED:
-                settings.SCREEN_WIDTH  = event.x
-                settings.SCREEN_HEIGHT = event.y
+                if sys.platform != 'emscripten':
+                    settings.SCREEN_WIDTH  = event.x
+                    settings.SCREEN_HEIGHT = event.y
 
             elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
                   and game_state == 'playing' and not paused):
