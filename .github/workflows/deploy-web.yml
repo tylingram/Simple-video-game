@@ -31,17 +31,22 @@ jobs:
       - name: Patch HTML for fullscreen layout
         run: |
           python3 - <<'PYEOF'
-          import pathlib, re
+          import pathlib
           p = pathlib.Path('rts-game/build/web/index.html')
-          html = p.read_text()
-          # 1. Use full viewport — gui_divider:2 splits screen in half for terminal
-          html = html.replace('gui_divider : 2', 'gui_divider : 1')
-          # 2. Black background instead of powderblue
-          html = html.replace('background-color:powderblue', 'background-color:#000')
-          html = html.replace("background-color: black", "background-color:#000")
-          # 3. Hide the pyconsole/terminal div completely
-          html = html.replace('<div id="pyconsole">', '<div id="pyconsole" hidden>')
-          p.write_text(html)
+          html = p.read_text(encoding='utf-8')
+          # Inject CSS that overrides everything pygbag sets
+          css = """<style>
+          html, body { margin:0; padding:0; background:#000 !important; overflow:hidden; }
+          canvas#canvas {
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important;
+            z-index: 999 !important;
+          }
+          #pyconsole, #crt, #transfer, #infobox { display:none !important; }
+          </style>"""
+          html = html.replace('</head>', css + '</head>', 1)
+          p.write_text(html, encoding='utf-8')
           PYEOF
 
       - name: Upload Pages artifact
