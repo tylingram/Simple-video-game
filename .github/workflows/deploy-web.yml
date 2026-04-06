@@ -35,53 +35,46 @@ jobs:
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
           html = html.replace('background-color:powderblue', 'background-color:#000')
+          # Also patch gui_divider in config — 2 splits canvas to half height
+          html = html.replace('gui_divider : 2', 'gui_divider : 1')
           inject = """<style>
-          html, body { margin:0; padding:0; background:#000 !important; overflow:hidden; }
-          #pyconsole, #crt, #transfer { display:none !important; }
+          html,body{margin:0;padding:0;background:#000!important;overflow:hidden;}
+          #pyconsole,#crt,#transfer{display:none!important;}
           </style>
           <script>
+          // Hijack window_resize before pygbag's CDN JS can define it.
+          // Object.defineProperty means pygbag's "window_resize = function(){...}"
+          // assignments are silently ignored — our version always wins.
           (function(){
-            var GW=1280, GH=720;
-            var _locking=false;
-            function applyScale(c){
-              if(_locking) return;
-              _locking=true;
-              var sw=window.innerWidth, sh=window.innerHeight;
-              var s=Math.min(sw/GW, sh/GH);
-              c.style.cssText=[
-                'position:fixed !important',
-                'width:'+GW+'px !important',
-                'height:'+GH+'px !important',
-                'left:'+Math.round((sw-GW*s)/2)+'px !important',
-                'top:'+Math.round((sh-GH*s)/2)+'px !important',
-                'transform-origin:top left !important',
-                'transform:scale('+s+') !important',
-                'z-index:9999 !important',
-                'margin:0 !important',
-                'padding:0 !important'
-              ].join(';');
-              _locking=false;
-            }
-            function attach(){
+            var GW=1280,GH=720;
+            function myResize(){
               var c=document.getElementById('canvas');
-              if(!c){ setTimeout(attach,100); return; }
-              applyScale(c);
-              new MutationObserver(function(){ applyScale(c); })
-                .observe(c, {attributes:true, attributeFilter:['style','width','height']});
-              window.addEventListener('resize', function(){ applyScale(c); });
+              if(!c)return;
+              var sw=window.innerWidth,sh=window.innerHeight;
+              var s=Math.min(sw/GW,sh/GH);
+              var l=Math.round((sw-GW*s)/2),t=Math.round((sh-GH*s)/2);
+              c.setAttribute('style',
+                'position:fixed;width:'+GW+'px;height:'+GH+'px;'+
+                'left:'+l+'px;top:'+t+'px;'+
+                'transform-origin:top left;transform:scale('+s+');'+
+                'z-index:9999;margin:0;padding:0;');
               document.body.style.background='#000';
-              ['pyconsole','crt','transfer'].forEach(function(id){
+              ['pyconsole','crt','transfer','infobox'].forEach(function(id){
                 var el=document.getElementById(id);
-                if(el) el.style.display='none';
+                if(el)el.style.display='none';
               });
+              window.onbeforeunload=null;
             }
-            document.addEventListener('DOMContentLoaded', attach);
-            window.addEventListener('load', attach);
-            setTimeout(attach, 0);
-            // Remove any beforeunload prompt — players shouldn't see "changes may not be saved"
-            window.addEventListener('load', function(){
-              window.onbeforeunload = null;
+            // Lock window_resize so pygbag cannot overwrite it
+            Object.defineProperty(window,'window_resize',{
+              get:function(){return myResize;},
+              set:function(){},
+              configurable:false
             });
+            window.addEventListener('resize',myResize);
+            window.addEventListener('load',myResize);
+            setTimeout(myResize,500);
+            setTimeout(myResize,2000);
           })();
           </script>"""
           html = html.replace('</head>', inject + '</head>', 1)
