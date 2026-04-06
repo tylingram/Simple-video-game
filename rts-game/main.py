@@ -1,3 +1,4 @@
+import asyncio
 import math
 import os
 import sys
@@ -236,7 +237,7 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
         missiles.append(Missile(sx, sy, unit, cref, team, explosive=explosive))
 
 
-def main():
+async def main():
     pygame.init()
 
     fullscreen = False
@@ -259,7 +260,8 @@ def main():
     enemy_carriers    = [EnemyCarrier(sx, sy, ed)
                          for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
     drones            = create_formation()
-    launch_config_editor()
+    if sys.platform != 'emscripten':
+        launch_config_editor()
     missiles   = []
     explosions = []
     game_state = 'playing'  # 'playing' | 'won' | 'lost'
@@ -268,41 +270,46 @@ def main():
     _last_click_drone = None
     _last_click_time  = 0
 
-    # Track config.json modification time to reload when editor saves
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    last_mtime  = os.path.getmtime(config_path) if os.path.exists(config_path) else 0
+    # Track config.json modification time to reload when editor saves (desktop only)
+    if sys.platform != 'emscripten':
+        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        last_mtime  = os.path.getmtime(config_path) if os.path.exists(config_path) else 0
+    else:
+        config_path = None
+        last_mtime  = 0
 
     running = True
     while running:
         dt = clock.tick(settings.FPS) / 1000.0
 
-        # --- Reload config ---
-        try:
-            mtime = os.path.getmtime(config_path)
-            if mtime > last_mtime:
-                cfg.load_from_disk()
-                game_map.reset()
-                ponds.reset()
-                n_enemies = int(cfg.get("ENEMY_CARRIERS"))
-                spawn     = game_map.edge_spawn_points(1 + n_enemies,
-                                                       cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
-                carrier.reset()
-                carrier.x, carrier.y = spawn[0]
-                enemy_drones_list = [create_formation() for _ in range(n_enemies)]
-                enemy_carriers    = [EnemyCarrier(sx, sy, ed)
-                                     for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
-                drones            = create_formation()
-                missiles          = []
-                explosions        = []
-                game_state        = 'playing'
-                paused            = False
-                kills             = 0
-                _last_click_drone = None
-                _last_click_time  = 0
-                fog.reset()
-                last_mtime = mtime
-        except OSError:
-            pass
+        # --- Reload config (desktop only) ---
+        if config_path is not None:
+            try:
+                mtime = os.path.getmtime(config_path)
+                if mtime > last_mtime:
+                    cfg.load_from_disk()
+                    game_map.reset()
+                    ponds.reset()
+                    n_enemies = int(cfg.get("ENEMY_CARRIERS"))
+                    spawn     = game_map.edge_spawn_points(1 + n_enemies,
+                                                           cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
+                    carrier.reset()
+                    carrier.x, carrier.y = spawn[0]
+                    enemy_drones_list = [create_formation() for _ in range(n_enemies)]
+                    enemy_carriers    = [EnemyCarrier(sx, sy, ed)
+                                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+                    drones            = create_formation()
+                    missiles          = []
+                    explosions        = []
+                    game_state        = 'playing'
+                    paused            = False
+                    kills             = 0
+                    _last_click_drone = None
+                    _last_click_time  = 0
+                    fog.reset()
+                    last_mtime = mtime
+            except OSError:
+                pass
 
         # --- Layout ---
         hud_h  = max(1, int(settings.SCREEN_HEIGHT * cfg.get("HUD_SIZE") / 100))
@@ -588,9 +595,10 @@ def main():
         if game_state != 'playing' or paused:
             draw_overlay(screen, 'paused' if paused else game_state, kills)
         pygame.display.flip()
+        await asyncio.sleep(0)
 
     pygame.quit()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
