@@ -34,18 +34,32 @@ jobs:
           import pathlib
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
-          # Inject CSS that overrides everything pygbag sets
-          css = """<style>
-          html, body { margin:0; padding:0; background:#000 !important; overflow:hidden; }
-          canvas#canvas {
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
-            width: 100vw !important; height: 100vh !important;
-            z-index: 999 !important;
-          }
-          #pyconsole, #crt, #transfer, #infobox { display:none !important; }
-          </style>"""
-          html = html.replace('</head>', css + '</head>', 1)
+          # Inject JS that runs on a timer and overrides pygbag's inline canvas styles
+          inject = """<script>
+          (function(){
+            function fix(){
+              var c=document.getElementById('canvas');
+              if(c){
+                c.style.setProperty('position','fixed','important');
+                c.style.setProperty('top','0','important');
+                c.style.setProperty('left','0','important');
+                c.style.setProperty('width','100vw','important');
+                c.style.setProperty('height','100vh','important');
+                c.style.setProperty('z-index','9999','important');
+              }
+              document.body.style.setProperty('background','#000','important');
+              document.body.style.setProperty('overflow','hidden','important');
+              ['pyconsole','crt','transfer','infobox'].forEach(function(id){
+                var el=document.getElementById(id);
+                if(el) el.style.setProperty('display','none','important');
+              });
+            }
+            setInterval(fix, 50);
+            document.addEventListener('DOMContentLoaded', fix);
+            window.addEventListener('load', fix);
+          })();
+          </script>"""
+          html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html, encoding='utf-8')
           PYEOF
 
