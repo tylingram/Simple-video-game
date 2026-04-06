@@ -326,7 +326,7 @@ async def main():
                 running = False
 
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F11:
+                if event.key == pygame.K_F11 and sys.platform != 'emscripten':
                     fullscreen = not fullscreen
                     screen = make_screen(fullscreen)
                 elif event.key == pygame.K_p:
