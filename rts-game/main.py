@@ -26,11 +26,11 @@ ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack 
 def make_screen(fullscreen):
     """Recreate the display surface in windowed or fullscreen mode."""
     if sys.platform == 'emscripten':
-        # Render at 1280x720 — pygbag/WebAssembly is too slow at 1920x1080.
-        # The browser GPU scales 1280x720 up to fill the screen for free.
+        # SCALED lets pygame render at 1280x720 and auto-stretch to the canvas size.
+        # This gives correct aspect ratio at full speed regardless of canvas dimensions.
         settings.SCREEN_WIDTH  = WINDOWED_W
         settings.SCREEN_HEIGHT = WINDOWED_H
-        return pygame.display.set_mode((WINDOWED_W, WINDOWED_H))
+        return pygame.display.set_mode((WINDOWED_W, WINDOWED_H), pygame.SCALED)
     elif fullscreen:
         info = pygame.display.Info()
         settings.SCREEN_WIDTH  = info.current_w
