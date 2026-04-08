@@ -26,7 +26,7 @@ jobs:
         run: pip install pygbag
 
       - name: Build web bundle
-        run: python -m pygbag --build --width 1920 --height 1080 --app_name "Island RTS" rts-game/main.py
+        run: python -m pygbag --build --width 1280 --height 720 --app_name "Island RTS" rts-game/main.py
 
       - name: Patch HTML for fullscreen layout
         run: |
