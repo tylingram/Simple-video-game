@@ -26,12 +26,10 @@ ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack 
 def make_screen(fullscreen):
     """Recreate the display surface in windowed or fullscreen mode."""
     if sys.platform == 'emscripten':
-        # set_mode((0,0)) lets pygbag size the canvas to fill the viewport at the
-        # correct 16:9 aspect ratio. The game draws to a 1280x720 intermediate
-        # surface and we scale-blit to screen each frame (fast GPU op).
+        # Let pygbag size the canvas. Read back real dimensions so mouse coords match.
         screen = pygame.display.set_mode((0, 0))
-        settings.SCREEN_WIDTH  = WINDOWED_W
-        settings.SCREEN_HEIGHT = WINDOWED_H
+        settings.SCREEN_WIDTH  = screen.get_width()  or WINDOWED_W
+        settings.SCREEN_HEIGHT = screen.get_height() or WINDOWED_H
         return screen
     elif fullscreen:
         info = pygame.display.Info()
@@ -253,12 +251,7 @@ async def main():
     pygame.display.set_caption(settings.TITLE)
     clock = pygame.time.Clock()
 
-    # In the browser we draw to a fixed 1280x720 surface then scale-blit to screen.
-    # This keeps rendering fast while pygbag's canvas fills the viewport correctly.
-    if sys.platform == 'emscripten':
-        draw_surf = pygame.Surface((WINDOWED_W, WINDOWED_H))
-    else:
-        draw_surf = screen  # desktop: draw directly to screen
+    draw_surf = screen  # draw directly to screen on all platforms
 
     hud      = HUD()
     game_map = GameMap()
@@ -295,7 +288,8 @@ async def main():
 
     running = True
     while running:
-        dt = clock.tick(settings.FPS) / 1000.0
+        _fps = 30 if sys.platform == 'emscripten' else settings.FPS
+        dt = clock.tick(_fps) / 1000.0
 
         # --- Reload config (desktop only) ---
         if config_path is not None:
@@ -611,9 +605,6 @@ async def main():
         if game_state != 'playing' or paused:
             draw_overlay(draw_surf, 'paused' if paused else game_state, kills)
 
-        # In browser: scale the 1280x720 draw surface up to the full screen canvas
-        if sys.platform == 'emscripten':
-            pygame.transform.scale(draw_surf, (screen.get_width(), screen.get_height()), screen)
         pygame.display.flip()
         await asyncio.sleep(0)
 
