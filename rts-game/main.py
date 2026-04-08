@@ -26,11 +26,13 @@ ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack 
 def make_screen(fullscreen):
     """Recreate the display surface in windowed or fullscreen mode."""
     if sys.platform == 'emscripten':
-        # SCALED lets pygame render at 1280x720 and auto-stretch to the canvas size.
-        # This gives correct aspect ratio at full speed regardless of canvas dimensions.
+        # set_mode((0,0)) lets pygbag size the canvas to fill the viewport at the
+        # correct 16:9 aspect ratio. The game draws to a 1280x720 intermediate
+        # surface and we scale-blit to screen each frame (fast GPU op).
+        screen = pygame.display.set_mode((0, 0))
         settings.SCREEN_WIDTH  = WINDOWED_W
         settings.SCREEN_HEIGHT = WINDOWED_H
-        return pygame.display.set_mode((WINDOWED_W, WINDOWED_H), pygame.SCALED)
+        return screen
     elif fullscreen:
         info = pygame.display.Info()
         settings.SCREEN_WIDTH  = info.current_w
@@ -250,6 +252,13 @@ async def main():
     screen     = make_screen(fullscreen)
     pygame.display.set_caption(settings.TITLE)
     clock = pygame.time.Clock()
+
+    # In the browser we draw to a fixed 1280x720 surface then scale-blit to screen.
+    # This keeps rendering fast while pygbag's canvas fills the viewport correctly.
+    if sys.platform == 'emscripten':
+        draw_surf = pygame.Surface((WINDOWED_W, WINDOWED_H))
+    else:
+        draw_surf = screen  # desktop: draw directly to screen
 
     hud      = HUD()
     game_map = GameMap()
@@ -551,56 +560,60 @@ async def main():
         #   map → ponds → all trails → carriers → player drones → enemy drones
         # Trails are drawn first so they never cover any drone.
         # Enemy drones sit above player drones so they are always visible.
-        game_map.draw(screen, camera_x_mm, camera_y_mm, game_h)
-        ponds.draw(screen, camera_x_mm, camera_y_mm, game_h)
+        game_map.draw(draw_surf, camera_x_mm, camera_y_mm, game_h)
+        ponds.draw(draw_surf, camera_x_mm, camera_y_mm, game_h)
         # 1. Trails — enemy trails only when their carrier is in player vision
         for ec in enemy_carriers:
             if player_can_see(ec.x, ec.y):
-                ec.draw_trail(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
-        carrier.draw_trail(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+                ec.draw_trail(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+        carrier.draw_trail(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
         # 2. Carrier bodies — enemy carriers only when visible
         for ec in enemy_carriers:
             if player_can_see(ec.x, ec.y):
-                ec.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
-        carrier.draw(screen, game_h)
+                ec.draw(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+        carrier.draw(draw_surf, game_h)
         # 3. Player drones
         for drone in drones:
-            drone.draw(screen, game_h)
+            drone.draw(draw_surf, game_h)
         # 4. Enemy drones — only when their world position is in player vision
         for ec, ed in zip(enemy_carriers, enemy_drones_list):
             for drone in ed:
                 wx = ec.x + drone.offset_x
                 wy = ec.y + drone.offset_y
                 if player_can_see(wx, wy):
-                    drone.draw_world(screen, ec.x, ec.y,
+                    drone.draw_world(draw_surf, ec.x, ec.y,
                                      camera_x_mm, camera_y_mm, game_h)
         # Missiles and explosions — drawn above units, below fog
         for m in missiles:
-            m.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+            m.draw(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
         for exp in explosions:
-            exp.draw(screen, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+            exp.draw(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
 
         # Attack-range dotted circles — drawn under fog so enemy circles are
         # automatically hidden wherever the fog has not been lifted.
         c_atk_px = max(1, int(cfg.get("CARRIER_ATTACK_RANGE_MM") * px_per_mm))
         d_atk_px = max(1, int(cfg.get("DRONE_ATTACK_RANGE_MM")   * px_per_mm))
         # Player carrier
-        draw_dotted_circle(screen, PLAYER_ATTACK_COLOR, cx, cy, c_atk_px)
+        draw_dotted_circle(draw_surf, PLAYER_ATTACK_COLOR, cx, cy, c_atk_px)
         # Player drones
         for drone in drones:
             dsx, dsy = drone.screen_pos(game_h)
-            draw_dotted_circle(screen, PLAYER_ATTACK_COLOR, dsx, dsy, d_atk_px)
+            draw_dotted_circle(draw_surf, PLAYER_ATTACK_COLOR, dsx, dsy, d_atk_px)
         # Enemy attack-range circles intentionally not drawn — hidden from player
 
-        fog.draw(screen, game_h, vision_circles)
+        fog.draw(draw_surf, game_h, vision_circles)
 
         # Max-radius dotted circle drawn after fog so it's always visible
         max_r_px = int(cfg.get("DRONE_MAX_RADIUS_MM") * px_per_mm)
-        draw_dotted_circle(screen, MAX_RADIUS_COLOR, cx, cy, max_r_px)
+        draw_dotted_circle(draw_surf, MAX_RADIUS_COLOR, cx, cy, max_r_px)
 
-        hud.draw(screen, carrier, drones, kills=kills)
+        hud.draw(draw_surf, carrier, drones, kills=kills)
         if game_state != 'playing' or paused:
-            draw_overlay(screen, 'paused' if paused else game_state, kills)
+            draw_overlay(draw_surf, 'paused' if paused else game_state, kills)
+
+        # In browser: scale the 1280x720 draw surface up to the full screen canvas
+        if sys.platform == 'emscripten':
+            pygame.transform.scale(draw_surf, (screen.get_width(), screen.get_height()), screen)
         pygame.display.flip()
         await asyncio.sleep(0)
 
