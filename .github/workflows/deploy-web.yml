@@ -31,14 +31,26 @@ jobs:
       - name: Patch HTML for fullscreen layout
         run: |
           python3 - <<'PYEOF'
-          import pathlib
+          import pathlib, re
           p = pathlib.Path('rts-game/build/web/index.html')
           html = p.read_text(encoding='utf-8')
           html = html.replace('background-color:powderblue', 'background-color:#000')
-          html = html.replace('gui_divider : 2', 'gui_divider : 1')
+          # Robust gui_divider patch — handles any whitespace around the colon/value
+          html = re.sub(r'(gui_divider\s*:\s*)2', r'\g<1>1', html)
           inject = """<style>
-          html,body{margin:0;padding:0;background:#000!important;overflow:hidden;}
+          html,body{margin:0;padding:0;width:100%;height:100%;background:#000!important;overflow:hidden;}
           #pyconsole,#crt,#transfer{display:none!important;}
+          /* Force canvas to 16:9, centered, never stretched */
+          canvas{
+            display:block!important;
+            position:fixed!important;
+            top:50%!important;left:50%!important;
+            transform:translate(-50%,-50%)!important;
+            width:min(100vw,calc(100vh * 16/9))!important;
+            height:min(100vh,calc(100vw * 9/16))!important;
+            image-rendering:pixelated;
+            background:#000;
+          }
           </style>
           <script>
           window.addEventListener('load',function(){ window.onbeforeunload=null; });
