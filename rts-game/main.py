@@ -289,7 +289,7 @@ async def main():
     running = True
     while running:
         _fps = 30 if sys.platform == 'emscripten' else settings.FPS
-        dt = clock.tick(_fps) / 1000.0
+        dt = min(clock.tick(_fps) / 1000.0, 0.1)  # cap at 100ms to prevent large-dt physics spikes
 
         # --- Reload config (desktop only) ---
         if config_path is not None:
@@ -522,6 +522,9 @@ async def main():
             # Remove dead enemy drones; remove dead enemy carriers + their drones
             enemy_drones_list = [[d for d in ed if d.hp > 0]
                                  for ed in enemy_drones_list]
+            # Sync filtered list back so ec._command_drones / ec._can_see skip dead drones
+            for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                ec.drones = ed
             _prev_n_enemies = len(enemy_carriers)
             alive = [(ec, ed) for ec, ed in zip(enemy_carriers, enemy_drones_list)
                      if ec.hp > 0]
