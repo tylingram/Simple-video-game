@@ -22,6 +22,14 @@ MAX_RADIUS_COLOR        = (90,  90, 125)   # grey-blue  — max drone roam radiu
 PLAYER_ATTACK_COLOR     = (50, 185, 100)   # vivid muted green — player attack range
 ENEMY_ATTACK_COLOR      = (190,  50,  50)  # deeper red        — enemy attack range
 
+# Slot keys 1-0 mapped to formation index 1-0
+_NUM_KEYS = {
+    pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 3,
+    pygame.K_4: 4, pygame.K_5: 5, pygame.K_6: 6,
+    pygame.K_7: 7, pygame.K_8: 8, pygame.K_9: 9,
+    pygame.K_0: 0,
+}
+
 
 def make_screen(fullscreen):
     """Recreate the display surface in windowed or fullscreen mode."""
@@ -72,6 +80,54 @@ def launch_config_editor():
     else:
         editor = os.path.join(os.path.dirname(__file__), "config_editor.py")
         subprocess.Popen([sys.executable, editor])
+
+
+def draw_formation_overlay(surface, formations, num_hold_start, game_h):
+    """Slot indicator strip + instructions for the formation editor."""
+    now       = pygame.time.get_ticks()
+    font_sm   = pygame.font.Font(None, 26)
+    font_hint = pygame.font.Font(None, 22)
+
+    # Top instruction bar
+    hint = font_hint.render(
+        "Hold 1-0 (1 s) = SAVE  |  Press 1-0 = RECALL  |  R = reset  |  ENTER = play",
+        True, (160, 160, 180)
+    )
+    surface.blit(hint, hint.get_rect(centerx=settings.SCREEN_WIDTH // 2, top=8))
+
+    # Slot boxes along the bottom of the game area
+    slots  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+    sw, sh = 34, 34
+    gap    = 6
+    total  = len(slots) * sw + (len(slots) - 1) * gap
+    x0     = (settings.SCREEN_WIDTH - total) // 2
+    y0     = game_h - sh - 10
+
+    key_for = {1: pygame.K_1, 2: pygame.K_2, 3: pygame.K_3,
+               4: pygame.K_4, 5: pygame.K_5, 6: pygame.K_6,
+               7: pygame.K_7, 8: pygame.K_8, 9: pygame.K_9,
+               0: pygame.K_0}
+
+    for i, slot in enumerate(slots):
+        sx  = x0 + i * (sw + gap)
+        kc  = key_for[slot]
+        saved   = slot in formations
+        holding = kc in num_hold_start
+
+        bg = (50, 90, 50) if saved else (35, 35, 55)
+        pygame.draw.rect(surface, bg,           pygame.Rect(sx, y0, sw, sh), border_radius=4)
+        pygame.draw.rect(surface, (90, 90, 130), pygame.Rect(sx, y0, sw, sh), 1, border_radius=4)
+
+        # Hold-progress bar at bottom of box
+        if holding:
+            frac   = min(1.0, (now - num_hold_start[kc]) / 1000.0)
+            pw     = max(1, int((sw - 2) * frac))
+            pygame.draw.rect(surface, (255, 200, 60),
+                             pygame.Rect(sx + 1, y0 + sh - 4, pw, 3))
+
+        label_color = (210, 255, 210) if saved else (140, 140, 165)
+        lbl = font_sm.render(str(slot), True, label_color)
+        surface.blit(lbl, lbl.get_rect(center=(sx + sw // 2, y0 + sh // 2)))
 
 
 def draw_overlay(surface, state, kills=0):
@@ -256,20 +312,19 @@ async def main():
     fog      = FogOfWar()
     carrier  = Carrier()
 
-    # Spawn player + enemies at the island edge, spaced by drone max radius
-    n_enemies = int(cfg.get("ENEMY_CARRIERS"))
-    spawn     = game_map.edge_spawn_points(1 + n_enemies,
-                                           cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
+    # Spawn player at edge; enemies spawned later when ENTER is pressed in formation editor
+    spawn = game_map.edge_spawn_points(1, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
     carrier.x, carrier.y = spawn[0]
-    enemy_drones_list = [create_formation() for _ in range(n_enemies)]
-    enemy_carriers    = [EnemyCarrier(sx, sy, ed)
-                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+    enemy_carriers    = []
+    enemy_drones_list = []
     drones            = create_formation()
     if sys.platform != 'emscripten':
         launch_config_editor()
     missiles   = []
     explosions = []
-    game_state = 'playing'  # 'playing' | 'won' | 'lost'
+    game_state = 'formation'  # 'formation' | 'playing' | 'won' | 'lost'
+    formations = {}            # slot (0-9) → [(offset_x, offset_y), ...]
+    _num_hold_start = {}       # key_const → ticks when key was pressed
     paused     = False
     kills      = 0
     _last_click_drone = None
@@ -295,18 +350,17 @@ async def main():
                     cfg.load_from_disk()
                     game_map.reset()
                     ponds.reset()
-                    n_enemies = int(cfg.get("ENEMY_CARRIERS"))
-                    spawn     = game_map.edge_spawn_points(1 + n_enemies,
-                                                           cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
+                    spawn = game_map.edge_spawn_points(1, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
                     carrier.reset()
                     carrier.x, carrier.y = spawn[0]
-                    enemy_drones_list = [create_formation() for _ in range(n_enemies)]
-                    enemy_carriers    = [EnemyCarrier(sx, sy, ed)
-                                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+                    enemy_carriers    = []
+                    enemy_drones_list = []
                     drones            = create_formation()
                     missiles          = []
                     explosions        = []
-                    game_state        = 'playing'
+                    formations        = {}
+                    _num_hold_start   = {}
+                    game_state        = 'formation'
                     paused            = False
                     kills             = 0
                     _last_click_drone = None
@@ -332,16 +386,35 @@ async def main():
                 elif event.key == pygame.K_p:
                     if game_state == 'playing':
                         paused = not paused
-                elif event.key == pygame.K_RETURN and game_state != 'playing':
-                    (enemy_carriers, enemy_drones_list,
-                     drones, missiles) = _reset_game(game_map, ponds, fog, carrier)
+                elif event.key == pygame.K_RETURN and game_state == 'formation':
+                    # Leave formation editor — spawn enemies and start game
+                    n_enemies = int(cfg.get("ENEMY_CARRIERS"))
+                    spawn = game_map.edge_spawn_points(
+                        1 + n_enemies, cfg.get("DRONE_MAX_RADIUS_MM"), ponds
+                    )
+                    enemy_drones_list = [create_formation() for _ in range(n_enemies)]
+                    enemy_carriers    = [EnemyCarrier(sx, sy, ed)
+                                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+                    missiles          = []
                     kills             = 0
-                    explosions        = []
                     game_state        = 'playing'
+                elif event.key == pygame.K_RETURN and game_state in ('won', 'lost'):
+                    # Return to formation editor — keep saved formations
+                    game_map.reset(); ponds.reset(); fog.reset()
+                    spawn = game_map.edge_spawn_points(1, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
+                    carrier.reset()
+                    carrier.x, carrier.y = spawn[0]
+                    drones            = create_formation()
+                    enemy_carriers    = []
+                    enemy_drones_list = []
+                    missiles          = []
+                    explosions        = []
+                    kills             = 0
+                    game_state        = 'formation'
                     paused            = False
                     _last_click_drone = None
                     _last_click_time  = 0
-                elif event.key == pygame.K_r and game_state == 'playing' and not paused:
+                elif event.key == pygame.K_r and game_state in ('formation', 'playing') and not paused:
                     n = len(drones)
                     if n > 0:
                         r_mm = cfg.get("DRONE_START_RADIUS_MM")
@@ -351,6 +424,24 @@ async def main():
                                          r_mm * math.sin(angle))
                         for d in drones:
                             d.selected = False
+                elif event.key in _NUM_KEYS and game_state in ('formation', 'playing') and not paused:
+                    _num_hold_start[event.key] = pygame.time.get_ticks()
+
+            elif event.type == pygame.KEYUP:
+                if event.key in _NUM_KEYS and game_state in ('formation', 'playing') and not paused:
+                    slot    = _NUM_KEYS[event.key]
+                    held_ms = pygame.time.get_ticks() - _num_hold_start.get(
+                                  event.key, pygame.time.get_ticks())
+                    if held_ms >= 1000:
+                        # Save current drone offsets to this slot
+                        formations[slot] = [(d.offset_x, d.offset_y) for d in drones]
+                    elif slot in formations:
+                        # Recall saved formation
+                        saved = formations[slot]
+                        for i, d in enumerate(drones):
+                            if i < len(saved):
+                                d.set_target(saved[i][0], saved[i][1])
+                    _num_hold_start.pop(event.key, None)
 
             elif event.type == pygame.WINDOWRESIZED:
                 if sys.platform != 'emscripten':
@@ -358,7 +449,7 @@ async def main():
                     settings.SCREEN_HEIGHT = event.y
 
             elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
-                  and game_state == 'playing' and not paused):
+                  and game_state in ('formation', 'playing') and not paused):
                 mx, my = event.pos
                 if my < game_h:   # ignore clicks on HUD
                     hit = next((d for d in drones
@@ -389,20 +480,12 @@ async def main():
                             oy = (my - game_h               // 2) / px_per_mm
                             sel.set_target(ox, oy)
 
-        # --- Update ---
-        if game_state == 'playing' and not paused:
+        # --- Update: carrier + player-drone physics (formation and playing) ---
+        if game_state in ('formation', 'playing') and not paused:
             keys = pygame.key.get_pressed()
             carrier.update(dt, keys)
             game_map.resolve_carrier(carrier)
             ponds.resolve_carrier(carrier)
-            for ec in enemy_carriers:
-                ec.update(dt, carrier.x, carrier.y)
-                game_map.resolve_carrier(ec)
-                ponds.resolve_carrier(ec)
-            resolve_carrier_collisions([carrier] + enemy_carriers)
-            for ec, ed in zip(enemy_carriers, enemy_drones_list):
-                for drone in ed:
-                    drone.update(dt, ec.vx, ec.vy)
             for drone in drones:
                 drone.update(dt, carrier.vx, carrier.vy)
 
@@ -451,6 +534,17 @@ async def main():
                         b.vel_x = 0.0;  b.vel_y = 0.0
                         a.target_x = a.offset_x;  a.target_y = a.offset_y
                         b.target_x = b.offset_x;  b.target_y = b.offset_y
+
+        # --- Update: enemy AI, combat, cleanup (playing only) ---
+        if game_state == 'playing' and not paused:
+            for ec in enemy_carriers:
+                ec.update(dt, carrier.x, carrier.y)
+                game_map.resolve_carrier(ec)
+                ponds.resolve_carrier(ec)
+            resolve_carrier_collisions([carrier] + enemy_carriers)
+            for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                for drone in ed:
+                    drone.update(dt, ec.vx, ec.vy)
 
             # --- Combat ---
             # Build per-team target lists: (unit, carrier_ref_or_None)
@@ -531,6 +625,10 @@ async def main():
             elif carrier.hp <= 0:
                 game_state = 'lost'
 
+        # Always available for draw — computed fresh if not set by combat block
+        if game_state != 'playing' or paused:
+            player_can_see = _make_can_see(carrier, drones)
+
         # --- Camera ---
         px_per_mm   = settings.DPI / 25.4
         camera_x_mm = carrier.x - (settings.SCREEN_WIDTH / 2) / px_per_mm
@@ -598,7 +696,9 @@ async def main():
         draw_dotted_circle(screen, MAX_RADIUS_COLOR, cx, cy, max_r_px)
 
         hud.draw(screen, carrier, drones, kills=kills)
-        if game_state != 'playing' or paused:
+        if game_state == 'formation':
+            draw_formation_overlay(screen, formations, _num_hold_start, game_h)
+        elif game_state != 'playing' or paused:
             draw_overlay(screen, 'paused' if paused else game_state, kills)
         pygame.display.flip()
         await asyncio.sleep(0)
