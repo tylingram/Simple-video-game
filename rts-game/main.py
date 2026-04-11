@@ -586,16 +586,22 @@ async def main():
                                     ec_can_see, d_range)
 
             # Update missiles and remove spent ones
-            # Build world-pos list for explosive splash damage
-            splash_targets = (
+            # Separate splash lists: enemy missiles only splash player units,
+            # player missiles splash everyone (including each other) — this
+            # prevents enemy scouts killing each other via friendly-fire explosions.
+            player_splash = (
                 [(carrier, carrier.x, carrier.y)] +
-                [(d, carrier.x + d.offset_x, carrier.y + d.offset_y) for d in drones] +
+                [(d, carrier.x + d.offset_x, carrier.y + d.offset_y) for d in drones]
+            )
+            all_splash = (
+                player_splash +
                 [(ec, ec.x, ec.y) for ec in enemy_carriers] +
                 [(d, ec.x + d.offset_x, ec.y + d.offset_y)
                  for ec, ed in zip(enemy_carriers, enemy_drones_list) for d in ed]
             )
             for m in missiles:
-                m.update(dt, splash_targets)
+                targets = player_splash if m.team == 'enemy' else all_splash
+                m.update(dt, targets)
                 if not m.alive and m.explosive and m.impact_x is not None:
                     explosions.append(Explosion(m.impact_x, m.impact_y))
             missiles = [m for m in missiles if m.alive]
@@ -618,6 +624,10 @@ async def main():
             enemy_carriers    = [ec for ec, ed in alive]
             enemy_drones_list = [ed for ec, ed in alive]
             kills += _prev_n_enemies - len(enemy_carriers)
+            # Sync each carrier's internal drone list so _command_drones counts
+            # only living drones (prevents guards/scouts ratio counting dead ones).
+            for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                ec.drones = ed
 
             # Win / loss check
             if not enemy_carriers:

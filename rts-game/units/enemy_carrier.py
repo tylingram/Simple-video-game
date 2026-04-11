@@ -105,7 +105,16 @@ class EnemyCarrier:
                     spread = math.pi * 0.5   # 90° fan aimed at player
                     frac   = scout_idx / max(1, n_scouts - 1)
                     angle  = angle_to_player + spread * (frac - 0.5)
-                    r      = random.uniform(max_r * 0.65, max_r * 0.9)
+                    # Cap scout radius so scouts stop short of the player rather
+                    # than overshooting — avoids scouts converging ON the player
+                    # and getting caught in each other's explosive blasts.
+                    dist_to_player = math.hypot(
+                        player_x - self.x, player_y - self.y)
+                    d_range = cfg.get("DRONE_ATTACK_RANGE_MM")
+                    max_scout_r = max(close_r, dist_to_player - d_range - 5)
+                    r = random.uniform(
+                        min(max_r * 0.65, max_scout_r * 0.85),
+                        min(max_r * 0.9,  max_scout_r))
                     drone.missile_type = 'explosive'
                 else:
                     angle = random.uniform(0, 2 * math.pi)
