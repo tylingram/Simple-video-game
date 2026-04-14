@@ -61,6 +61,7 @@ class Drone:
         self.fire_cooldown      = random.uniform(0.0, 1.0)
         self.fire_cooldown_max  = 1.0   # updated when a shot is fired
         self.has_fired          = False  # arc only shown after first shot
+        self.bounce_until       = 0     # ms timestamp; bounce active while ticks < this
 
     # ── Commanding ────────────────────────────────────────────────────────────
 

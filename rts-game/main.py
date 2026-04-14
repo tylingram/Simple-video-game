@@ -427,10 +427,12 @@ async def main():
                     n = len(drones)
                     if n > 0:
                         r_mm = cfg.get("DRONE_START_RADIUS_MM")
+                        _bounce_exp_r = pygame.time.get_ticks() + 5000
                         for i, d in enumerate(drones):
                             angle = -math.pi / 2 + 2 * math.pi * i / n
                             d.set_target(r_mm * math.cos(angle),
                                          r_mm * math.sin(angle))
+                            d.bounce_until = _bounce_exp_r
                         for d in drones:
                             d.selected = False
                 elif event.key in _NUM_KEYS and game_state in ('formation', 'playing') and not paused:
@@ -447,9 +449,11 @@ async def main():
                     elif slot in formations:
                         # Recall saved formation
                         saved = formations[slot]
+                        _bounce_exp_f = pygame.time.get_ticks() + 5000
                         for i, d in enumerate(drones):
                             if i < len(saved):
                                 d.set_target(saved[i][0], saved[i][1])
+                                d.bounce_until = _bounce_exp_f
                     _num_hold_start.pop(event.key, None)
 
             elif event.type == pygame.WINDOWRESIZED:
@@ -504,8 +508,10 @@ async def main():
                             cy_g = sum(d.offset_y for d in selected) / len(selected)
                             # Shift each drone by the same delta so spacing is kept
                             dx, dy = ox - cx_g, oy - cy_g
+                            _bounce_expire = pygame.time.get_ticks() + 5000
                             for d in selected:
                                 d.set_target(d.offset_x + dx, d.offset_y + dy)
+                                d.bounce_until = _bounce_expire
                             # Keep selection — drones stay highlighted so the
                             # player can keep clicking new destinations without
                             # re-selecting.  Selection clears on: box-drag,
@@ -551,14 +557,12 @@ async def main():
             for drone in drones:
                 drone.update(dt, carrier.vx, carrier.vy)
 
-            # --- Drone collision: elastic bounce ---
-            # Overlapping drones are pushed apart and their velocity components
-            # along the collision axis are exchanged (equal-mass elastic collision).
-            # Targets are NOT reset — drones keep steering toward their goals and
-            # naturally navigate around each other after bouncing.
-            # Resulting speeds are clamped to DEFAULT_DRONE_MAX_SPEED.
+            # --- Drone collision: bounce (first 5 s after a move) or hard-stop ---
+            # While a drone's bounce_until timer is active it gets elastic bounce
+            # behaviour; once expired it reverts to the original hard-stop.
             d_mm      = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
             max_speed = cfg.get("DEFAULT_DRONE_MAX_SPEED")
+            _now_ms   = pygame.time.get_ticks()
             for i in range(len(drones)):
                 for j in range(i + 1, len(drones)):
                     a, b = drones[i], drones[j]
@@ -577,23 +581,41 @@ async def main():
                     b.offset_x += nx * overlap * 0.5
                     b.offset_y += ny * overlap * 0.5
 
-                    # Velocity components along the collision normal
-                    va_n = a.vel_x * nx + a.vel_y * ny
-                    vb_n = b.vel_x * nx + b.vel_y * ny
+                    a_bouncing = _now_ms < a.bounce_until
+                    b_bouncing = _now_ms < b.bounce_until
 
-                    # Only bounce if the drones are actually approaching each other
-                    if va_n - vb_n > 0:
-                        # Exchange normal-axis velocity components
-                        delta = vb_n - va_n          # what A gains / B loses
-                        a.vel_x += delta * nx;  a.vel_y += delta * ny
-                        b.vel_x -= delta * nx;  b.vel_y -= delta * ny
-
-                        # Clamp to max speed (respects the drone speed limit)
-                        for d in (a, b):
-                            spd = math.sqrt(d.vel_x ** 2 + d.vel_y ** 2)
-                            if spd > max_speed and spd > 0:
-                                d.vel_x = d.vel_x / spd * max_speed
-                                d.vel_y = d.vel_y / spd * max_speed
+                    if a_bouncing or b_bouncing:
+                        # Elastic bounce — exchange normal-axis velocity components
+                        va_n = a.vel_x * nx + a.vel_y * ny
+                        vb_n = b.vel_x * nx + b.vel_y * ny
+                        if va_n - vb_n > 0:
+                            delta = vb_n - va_n
+                            a.vel_x += delta * nx;  a.vel_y += delta * ny
+                            b.vel_x -= delta * nx;  b.vel_y -= delta * ny
+                            for d in (a, b):
+                                spd = math.sqrt(d.vel_x ** 2 + d.vel_y ** 2)
+                                if spd > max_speed and spd > 0:
+                                    d.vel_x = d.vel_x / spd * max_speed
+                                    d.vel_y = d.vel_y / spd * max_speed
+                    else:
+                        # Hard-stop — original behaviour
+                        a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
+                        b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
+                        if a_moving and not b_moving:
+                            a.offset_x -= nx * overlap * 0.5
+                            a.offset_y -= ny * overlap * 0.5
+                            a.vel_x = 0.0;  a.vel_y = 0.0
+                            a.target_x = a.offset_x;  a.target_y = a.offset_y
+                        elif b_moving and not a_moving:
+                            b.offset_x += nx * overlap * 0.5
+                            b.offset_y += ny * overlap * 0.5
+                            b.vel_x = 0.0;  b.vel_y = 0.0
+                            b.target_x = b.offset_x;  b.target_y = b.offset_y
+                        else:
+                            a.vel_x = 0.0;  a.vel_y = 0.0
+                            b.vel_x = 0.0;  b.vel_y = 0.0
+                            a.target_x = a.offset_x;  a.target_y = a.offset_y
+                            b.target_x = b.offset_x;  b.target_y = b.offset_y
 
             # --- Drone boundary constraints ---
             # Drones must stay inside BOTH the max-radius circle AND the visible
