@@ -457,6 +457,14 @@ async def main():
                     settings.SCREEN_WIDTH  = event.x
                     settings.SCREEN_HEIGHT = event.y
 
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 3
+                  and game_state in ('formation', 'playing') and not paused):
+                # Right-click: deselect all drones
+                for d in drones:
+                    d.selected = False
+                _drag_start = None
+                _drag_rect  = None
+
             elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
                   and game_state in ('formation', 'playing') and not paused):
                 mx, my = event.pos
