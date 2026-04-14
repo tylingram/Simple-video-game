@@ -329,6 +329,8 @@ async def main():
     kills      = 0
     _last_click_drone = None
     _last_click_time  = 0
+    _drag_start = None   # (mx, my) screen pixels where LMB went down
+    _drag_rect  = None   # current pygame.Rect of the drag box (None when not dragging)
 
     # Track config.json modification time to reload when editor saves (desktop only)
     if sys.platform != 'emscripten':
@@ -468,24 +470,61 @@ async def main():
                             hit.missile_type = (
                                 'explosive' if hit.missile_type == 'normal' else 'normal'
                             )
-                            _last_click_drone = None   # reset so triple-click doesn't re-toggle
+                            _last_click_drone = None
                         else:
-                            # Single click: toggle selection; deselect all others
+                            # Single click on drone: toggle selection, deselect others
                             already_selected = hit.selected
                             for d in drones:
                                 d.selected = False
                             hit.selected = not already_selected
                             _last_click_drone = hit
                             _last_click_time  = now
+                        _drag_start = None
+                        _drag_rect  = None
                     else:
-                        _last_click_drone = None
-                        # Move selected drone to clicked position
-                        sel = next((d for d in drones if d.selected), None)
-                        if sel:
+                        selected = [d for d in drones if d.selected]
+                        if selected:
+                            # Move all selected drones to clicked position
+                            _last_click_drone = None
                             px_per_mm = settings.DPI / 25.4
                             ox = (mx - settings.SCREEN_WIDTH // 2) / px_per_mm
                             oy = (my - game_h               // 2) / px_per_mm
-                            sel.set_target(ox, oy)
+                            for d in selected:
+                                d.set_target(ox, oy)
+                            # Deselect after issuing the move command
+                            for d in selected:
+                                d.selected = False
+                            _drag_start = None
+                            _drag_rect  = None
+                        else:
+                            # Start box-select drag
+                            _last_click_drone = None
+                            _drag_start = (mx, my)
+                            _drag_rect  = None
+
+            elif (event.type == pygame.MOUSEMOTION
+                  and _drag_start is not None
+                  and game_state in ('formation', 'playing') and not paused):
+                mx, my = event.pos
+                x0, y0 = _drag_start
+                rx = min(x0, mx)
+                ry = min(y0, my)
+                rw = abs(mx - x0)
+                rh = abs(my - y0)
+                _drag_rect = pygame.Rect(rx, ry, rw, rh) if (rw > 4 or rh > 4) else None
+
+            elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
+                  and game_state in ('formation', 'playing') and not paused):
+                if _drag_rect is not None and _drag_rect.width > 4 and _drag_rect.height > 4:
+                    # Finalise box-select: select all drones whose screen pos is inside the rect
+                    for d in drones:
+                        d.selected = False
+                    for d in drones:
+                        dsx, dsy = d.screen_pos(game_h)
+                        if _drag_rect.collidepoint(dsx, dsy):
+                            d.selected = True
+                _drag_start = None
+                _drag_rect  = None
 
         # --- Update: carrier + player-drone physics (formation and playing) ---
         if game_state in ('formation', 'playing') and not paused:
@@ -717,6 +756,15 @@ async def main():
             draw_formation_overlay(screen, formations, _num_hold_start, game_h)
         elif game_state != 'playing' or paused:
             draw_overlay(screen, 'paused' if paused else game_state, kills)
+
+        # Draw drag-select box
+        if _drag_rect is not None and _drag_rect.width > 4 and _drag_rect.height > 4:
+            box_surf = pygame.Surface((_drag_rect.width, _drag_rect.height), pygame.SRCALPHA)
+            box_surf.fill((80, 160, 255, 40))          # translucent blue fill
+            pygame.draw.rect(box_surf, (120, 200, 255, 180),
+                             box_surf.get_rect(), 1)   # bright blue border
+            screen.blit(box_surf, (_drag_rect.x, _drag_rect.y))
+
         pygame.display.flip()
         await asyncio.sleep(0)
 
