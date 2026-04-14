@@ -542,12 +542,14 @@ async def main():
             for drone in drones:
                 drone.update(dt, carrier.vx, carrier.vy)
 
-            # --- Drone collision: hard stop on contact ---
-            # Moving drone hits another drone → pushed back to non-overlapping
-            # position and fully stopped (vel zeroed, target snapped to position).
-            # The stationary drone is never moved.  If two drones are both moving
-            # and collide, both stop.
-            d_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+            # --- Drone collision: elastic bounce ---
+            # Overlapping drones are pushed apart and their velocity components
+            # along the collision axis are exchanged (equal-mass elastic collision).
+            # Targets are NOT reset — drones keep steering toward their goals and
+            # naturally navigate around each other after bouncing.
+            # Resulting speeds are clamped to DEFAULT_DRONE_MAX_SPEED.
+            d_mm      = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+            max_speed = cfg.get("DEFAULT_DRONE_MAX_SPEED")
             for i in range(len(drones)):
                 for j in range(i + 1, len(drones)):
                     a, b = drones[i], drones[j]
@@ -557,36 +559,32 @@ async def main():
                     if dist_sq >= d_mm * d_mm or dist_sq == 0:
                         continue
                     dist_ab = math.sqrt(dist_sq)
-                    nx, ny  = ddx / dist_ab, ddy / dist_ab   # unit vector A→B
+                    nx, ny  = ddx / dist_ab, ddy / dist_ab  # unit vector A→B
                     overlap = d_mm - dist_ab
-                    a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
-                    b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
-                    if a_moving and not b_moving:
-                        # A ran into stationary B — push A back, stop A
-                        a.offset_x -= nx * overlap
-                        a.offset_y -= ny * overlap
-                        a.vel_x = 0.0
-                        a.vel_y = 0.0
-                        a.target_x = a.offset_x
-                        a.target_y = a.offset_y
-                    elif b_moving and not a_moving:
-                        # B ran into stationary A — push B back, stop B
-                        b.offset_x += nx * overlap
-                        b.offset_y += ny * overlap
-                        b.vel_x = 0.0
-                        b.vel_y = 0.0
-                        b.target_x = b.offset_x
-                        b.target_y = b.offset_y
-                    else:
-                        # Both moving — push apart equally, stop both
-                        a.offset_x -= nx * overlap * 0.5
-                        a.offset_y -= ny * overlap * 0.5
-                        b.offset_x += nx * overlap * 0.5
-                        b.offset_y += ny * overlap * 0.5
-                        a.vel_x = 0.0;  a.vel_y = 0.0
-                        b.vel_x = 0.0;  b.vel_y = 0.0
-                        a.target_x = a.offset_x;  a.target_y = a.offset_y
-                        b.target_x = b.offset_x;  b.target_y = b.offset_y
+
+                    # Positional correction — push equally apart
+                    a.offset_x -= nx * overlap * 0.5
+                    a.offset_y -= ny * overlap * 0.5
+                    b.offset_x += nx * overlap * 0.5
+                    b.offset_y += ny * overlap * 0.5
+
+                    # Velocity components along the collision normal
+                    va_n = a.vel_x * nx + a.vel_y * ny
+                    vb_n = b.vel_x * nx + b.vel_y * ny
+
+                    # Only bounce if the drones are actually approaching each other
+                    if va_n - vb_n > 0:
+                        # Exchange normal-axis velocity components
+                        delta = vb_n - va_n          # what A gains / B loses
+                        a.vel_x += delta * nx;  a.vel_y += delta * ny
+                        b.vel_x -= delta * nx;  b.vel_y -= delta * ny
+
+                        # Clamp to max speed (respects the drone speed limit)
+                        for d in (a, b):
+                            spd = math.sqrt(d.vel_x ** 2 + d.vel_y ** 2)
+                            if spd > max_speed and spd > 0:
+                                d.vel_x = d.vel_x / spd * max_speed
+                                d.vel_y = d.vel_y / spd * max_speed
 
         # --- Update: enemy AI, combat, cleanup (playing only) ---
         if game_state == 'playing' and not paused:
