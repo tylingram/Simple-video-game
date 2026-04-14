@@ -591,8 +591,9 @@ async def main():
             # screen area.  Hitting either boundary breaks formation: the drone
             # stops at the wall (target snapped, outward velocity zeroed).
             _ppm      = settings.DPI / 25.4
-            _half_w   = (settings.SCREEN_WIDTH / 2) / _ppm   # mm
-            _half_h   = (game_h / 2) / _ppm                  # mm
+            _drone_r  = cfg.get("DEFAULT_DRONE_DIAMETER_MM") / 2.0  # mm
+            _half_w   = (settings.SCREEN_WIDTH / 2) / _ppm - _drone_r
+            _half_h   = (game_h / 2) / _ppm - _drone_r
             _max_r    = cfg.get("DRONE_MAX_RADIUS_MM")
             for d in drones:
                 # 1. Max-radius circle constraint
