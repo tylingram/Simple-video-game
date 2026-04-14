@@ -624,8 +624,11 @@ async def main():
 
             # --- Drone boundary constraints ---
             # Drones must stay inside BOTH the max-radius circle AND the visible
-            # screen area.  Hitting either boundary breaks formation: the drone
-            # stops at the wall (target snapped, outward velocity zeroed).
+            # screen area.  Only position and outward velocity are clamped —
+            # targets are intentionally NOT touched so a group move command
+            # issued while a drone is at the wall still takes effect.
+            # (The drone's steering naturally won't push outward if the target
+            # is inside the boundary; it will just slide along the wall.)
             _ppm      = settings.DPI / 25.4
             _drone_r  = cfg.get("DEFAULT_DRONE_DIAMETER_MM") / 2.0  # mm
             _half_w   = (settings.SCREEN_WIDTH / 2) / _ppm - _drone_r
@@ -638,36 +641,26 @@ async def main():
                     scale      = _max_r / r
                     d.offset_x *= scale
                     d.offset_y *= scale
-                    # Cancel outward velocity component
+                    # Cancel outward velocity component only
                     nr_x, nr_y = d.offset_x / _max_r, d.offset_y / _max_r
                     v_out = d.vel_x * nr_x + d.vel_y * nr_y
                     if v_out > 0:
                         d.vel_x -= v_out * nr_x
                         d.vel_y -= v_out * nr_y
-                    d.target_x = d.offset_x
-                    d.target_y = d.offset_y
 
                 # 2. Screen-edge (rectangular) constraint
-                hit_wall = False
                 if d.offset_x < -_half_w:
                     d.offset_x = -_half_w
                     if d.vel_x < 0: d.vel_x = 0.0
-                    hit_wall = True
                 elif d.offset_x > _half_w:
                     d.offset_x =  _half_w
                     if d.vel_x > 0: d.vel_x = 0.0
-                    hit_wall = True
                 if d.offset_y < -_half_h:
                     d.offset_y = -_half_h
                     if d.vel_y < 0: d.vel_y = 0.0
-                    hit_wall = True
                 elif d.offset_y > _half_h:
                     d.offset_y =  _half_h
                     if d.vel_y > 0: d.vel_y = 0.0
-                    hit_wall = True
-                if hit_wall:
-                    d.target_x = d.offset_x
-                    d.target_y = d.offset_y
 
         # --- Update: enemy AI, combat, cleanup (playing only) ---
         if game_state == 'playing' and not paused:
