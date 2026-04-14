@@ -680,6 +680,62 @@ async def main():
                 for drone in ed:
                     drone.update(dt, ec.vx, ec.vy)
 
+            # --- Cross-team drone collision ---
+            # Player drones and enemy drones bounce off each other in world space.
+            # Always elastic — both sides are in active motion with intent.
+            _xd_mm  = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+            _xspeed = cfg.get("DEFAULT_DRONE_MAX_SPEED")
+            for pd in drones:
+                for ec, ed in zip(enemy_carriers, enemy_drones_list):
+                    for ed_d in ed:
+                        # World positions (recompute each pair — offsets may shift)
+                        pw_x = carrier.x + pd.offset_x
+                        pw_y = carrier.y + pd.offset_y
+                        ew_x = ec.x     + ed_d.offset_x
+                        ew_y = ec.y     + ed_d.offset_y
+                        ddx  = ew_x - pw_x
+                        ddy  = ew_y - pw_y
+                        dist_sq = ddx * ddx + ddy * ddy
+                        if dist_sq >= _xd_mm * _xd_mm or dist_sq == 0:
+                            continue
+                        dist_ab = math.sqrt(dist_sq)
+                        nx, ny  = ddx / dist_ab, ddy / dist_ab
+                        overlap = _xd_mm - dist_ab
+
+                        # Positional correction in world space → update offsets
+                        pd.offset_x  -= nx * overlap * 0.5
+                        pd.offset_y  -= ny * overlap * 0.5
+                        ed_d.offset_x += nx * overlap * 0.5
+                        ed_d.offset_y += ny * overlap * 0.5
+
+                        # World-space velocities
+                        pv_x = carrier.vx + pd.vel_x
+                        pv_y = carrier.vy + pd.vel_y
+                        ev_x = ec.vx     + ed_d.vel_x
+                        ev_y = ec.vy     + ed_d.vel_y
+
+                        # Elastic bounce along normal if approaching
+                        pv_n = pv_x * nx + pv_y * ny
+                        ev_n = ev_x * nx + ev_y * ny
+                        if pv_n - ev_n > 0:
+                            delta = ev_n - pv_n
+                            pv_x += delta * nx;  pv_y += delta * ny
+                            ev_x -= delta * nx;  ev_y -= delta * ny
+                            # Clamp world speed
+                            p_spd = math.sqrt(pv_x ** 2 + pv_y ** 2)
+                            e_spd = math.sqrt(ev_x ** 2 + ev_y ** 2)
+                            if p_spd > _xspeed and p_spd > 0:
+                                pv_x = pv_x / p_spd * _xspeed
+                                pv_y = pv_y / p_spd * _xspeed
+                            if e_spd > _xspeed and e_spd > 0:
+                                ev_x = ev_x / e_spd * _xspeed
+                                ev_y = ev_y / e_spd * _xspeed
+                            # Convert back to carrier-relative velocities
+                            pd.vel_x   = pv_x - carrier.vx
+                            pd.vel_y   = pv_y - carrier.vy
+                            ed_d.vel_x = ev_x - ec.vx
+                            ed_d.vel_y = ev_y - ec.vy
+
             # --- Combat ---
             # Build per-team target lists: (unit, carrier_ref_or_None)
             enemy_targets  = ([(ec, None) for ec in enemy_carriers] +
