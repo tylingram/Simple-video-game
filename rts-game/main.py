@@ -498,9 +498,10 @@ async def main():
                             dx, dy = ox - cx_g, oy - cy_g
                             for d in selected:
                                 d.set_target(d.offset_x + dx, d.offset_y + dy)
-                            # Deselect after issuing the move command
-                            for d in selected:
-                                d.selected = False
+                            # Keep selection — drones stay highlighted so the
+                            # player can keep clicking new destinations without
+                            # re-selecting.  Selection clears on: box-drag,
+                            # single-drone click, or double-click missile toggle.
                             _drag_start = None
                             _drag_rect  = None
                         else:
