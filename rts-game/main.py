@@ -484,13 +484,20 @@ async def main():
                     else:
                         selected = [d for d in drones if d.selected]
                         if selected:
-                            # Move all selected drones to clicked position
+                            # Move selected drones in formation — preserve their
+                            # relative offsets so touching drones stay together.
                             _last_click_drone = None
                             px_per_mm = settings.DPI / 25.4
+                            # Target centroid in carrier-relative offset coords
                             ox = (mx - settings.SCREEN_WIDTH // 2) / px_per_mm
                             oy = (my - game_h               // 2) / px_per_mm
+                            # Current centroid of the selected group
+                            cx_g = sum(d.offset_x for d in selected) / len(selected)
+                            cy_g = sum(d.offset_y for d in selected) / len(selected)
+                            # Shift each drone by the same delta so spacing is kept
+                            dx, dy = ox - cx_g, oy - cy_g
                             for d in selected:
-                                d.set_target(ox, oy)
+                                d.set_target(d.offset_x + dx, d.offset_y + dy)
                             # Deselect after issuing the move command
                             for d in selected:
                                 d.selected = False
