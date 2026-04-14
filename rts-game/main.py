@@ -387,14 +387,21 @@ async def main():
                     if game_state == 'playing':
                         paused = not paused
                 elif event.key == pygame.K_RETURN and game_state == 'formation':
-                    # Leave formation editor — spawn enemies and start game
+                    # Leave formation editor — spawn enemies well away from player
                     n_enemies = int(cfg.get("ENEMY_CARRIERS"))
+                    # Use carrier vision radius as minimum spacing so enemies
+                    # always start off-screen / outside the player's vision.
+                    min_sep = max(
+                        cfg.get("DRONE_MAX_RADIUS_MM"),
+                        cfg.get("CARRIER_VISION_RADIUS_MM") * 2.5,
+                    )
                     spawn = game_map.edge_spawn_points(
-                        1 + n_enemies, cfg.get("DRONE_MAX_RADIUS_MM"), ponds
+                        n_enemies, min_sep, ponds,
+                        avoid=[(carrier.x, carrier.y)],
                     )
                     enemy_drones_list = [create_formation() for _ in range(n_enemies)]
                     enemy_carriers    = [EnemyCarrier(sx, sy, ed)
-                                         for (sx, sy), ed in zip(spawn[1:], enemy_drones_list)]
+                                         for (sx, sy), ed in zip(spawn, enemy_drones_list)]
                     missiles          = []
                     kills             = 0
                     game_state        = 'playing'

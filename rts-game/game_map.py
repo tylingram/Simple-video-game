@@ -159,18 +159,22 @@ class GameMap:
     # Spawn-point distribution — edge of island, well spaced
     # ------------------------------------------------------------------
 
-    def edge_spawn_points(self, n, min_sep_mm, ponds=None):
+    def edge_spawn_points(self, n, min_sep_mm, ponds=None, avoid=None):
         """
         Return n world-space (x, y) positions distributed around the coast,
         each pushed inward so carriers start clearly inside the boundary.
-        Points are guaranteed >= min_sep_mm apart from each other and will
+        Points are guaranteed >= min_sep_mm apart from each other and from
+        every point in `avoid` (e.g. the player's current position), and will
         never land inside a pond.
         ponds — optional Ponds manager; candidates inside any pond are skipped.
+        avoid — optional list of (x, y) positions to stay >= min_sep_mm away from.
         """
         map_w = cfg.get("MAP_WIDTH_MM")
         map_h = cfg.get("MAP_HEIGHT_MM")
         cx, cy = map_w / 2, map_h / 2
         inset = cfg.get("CARRIER_WIDTH_MM") * 3   # push well inside coast
+
+        avoid_pts = list(avoid) if avoid else []
 
         # Sample perimeter at ~1 point per mm then inset each toward centre
         samples = []
@@ -200,8 +204,10 @@ class GameMap:
         for px_, py_ in ordered:
             if any(_point_in_poly(px_, py_, pond.verts) for pond in pond_list):
                 continue
+            # Must be far enough from already-chosen points AND avoided positions
+            all_blocked = chosen + avoid_pts
             if all(math.hypot(px_ - qx, py_ - qy) >= min_sep_mm
-                   for qx, qy in chosen):
+                   for qx, qy in all_blocked):
                 chosen.append((px_, py_))
                 if len(chosen) == n:
                     break
