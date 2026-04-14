@@ -329,8 +329,9 @@ async def main():
     kills      = 0
     _last_click_drone = None
     _last_click_time  = 0
-    _drag_start = None   # (mx, my) screen pixels where LMB went down
-    _drag_rect  = None   # current pygame.Rect of the drag box (None when not dragging)
+    _drag_start    = None   # (mx, my) screen pixels where LMB went down
+    _drag_rect     = None   # current pygame.Rect of the drag box (None when not dragging)
+    _click_markers = []     # [(offset_x, offset_y, expire_ms), ...]  — move destination pips
 
     # Track config.json modification time to reload when editor saves (desktop only)
     if sys.platform != 'emscripten':
@@ -512,6 +513,7 @@ async def main():
                             for d in selected:
                                 d.set_target(d.offset_x + dx, d.offset_y + dy)
                                 d.bounce_until = _bounce_expire
+                            _click_markers.append((ox, oy, pygame.time.get_ticks() + 1000))
                             # Keep selection — drones stay highlighted so the
                             # player can keep clicking new destinations without
                             # re-selecting.  Selection clears on: box-drag,
@@ -581,11 +583,25 @@ async def main():
                     b.offset_x += nx * overlap * 0.5
                     b.offset_y += ny * overlap * 0.5
 
-                    a_bouncing = _now_ms < a.bounce_until
-                    b_bouncing = _now_ms < b.bounce_until
+                    a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
+                    b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
 
-                    if a_bouncing or b_bouncing:
-                        # Elastic bounce — exchange normal-axis velocity components
+                    # Bounce vs hard-stop rules:
+                    #   both in motion         → always bounce (two navigating drones
+                    #                            deflect off each other freely)
+                    #   one moving, one static → bounce only while mover's 5 s timer
+                    #                            is active; after that hard-stop
+                    #   both static            → positional correction only
+                    if a_moving and b_moving:
+                        do_bounce = True
+                    elif a_moving and not b_moving:
+                        do_bounce = _now_ms < a.bounce_until
+                    elif b_moving and not a_moving:
+                        do_bounce = _now_ms < b.bounce_until
+                    else:
+                        do_bounce = False
+
+                    if do_bounce:
                         va_n = a.vel_x * nx + a.vel_y * ny
                         vb_n = b.vel_x * nx + b.vel_y * ny
                         if va_n - vb_n > 0:
@@ -597,24 +613,13 @@ async def main():
                                 if spd > max_speed and spd > 0:
                                     d.vel_x = d.vel_x / spd * max_speed
                                     d.vel_y = d.vel_y / spd * max_speed
-                    else:
-                        # Hard-stop — original behaviour
-                        a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
-                        b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
-                        if a_moving and not b_moving:
-                            a.offset_x -= nx * overlap * 0.5
-                            a.offset_y -= ny * overlap * 0.5
+                    elif a_moving or b_moving:
+                        # Hard-stop the mover(s)
+                        if a_moving:
                             a.vel_x = 0.0;  a.vel_y = 0.0
                             a.target_x = a.offset_x;  a.target_y = a.offset_y
-                        elif b_moving and not a_moving:
-                            b.offset_x += nx * overlap * 0.5
-                            b.offset_y += ny * overlap * 0.5
+                        if b_moving:
                             b.vel_x = 0.0;  b.vel_y = 0.0
-                            b.target_x = b.offset_x;  b.target_y = b.offset_y
-                        else:
-                            a.vel_x = 0.0;  a.vel_y = 0.0
-                            b.vel_x = 0.0;  b.vel_y = 0.0
-                            a.target_x = a.offset_x;  a.target_y = a.offset_y
                             b.target_x = b.offset_x;  b.target_y = b.offset_y
 
             # --- Drone boundary constraints ---
@@ -839,6 +844,21 @@ async def main():
             draw_formation_overlay(screen, formations, _num_hold_start, game_h)
         elif game_state != 'playing' or paused:
             draw_overlay(screen, 'paused' if paused else game_state, kills)
+
+        # Draw click-move markers (carrier-relative offset → screen)
+        _now_draw = pygame.time.get_ticks()
+        _click_markers = [(ox, oy, exp) for ox, oy, exp in _click_markers if _now_draw < exp]
+        for ox, oy, exp in _click_markers:
+            frac  = (_now_draw - (exp - 1000)) / 1000.0   # 0→1 over lifetime
+            alpha = int(255 * (1.0 - frac))
+            r_px  = int(4 + 6 * frac)                     # ring expands slightly
+            sx    = settings.SCREEN_WIDTH // 2 + int(ox * px_per_mm)
+            sy    = game_h               // 2 + int(oy * px_per_mm)
+            color = (100, 220, 255, alpha)
+            # Draw two crossed lines + circle as a destination pip
+            pygame.draw.circle(screen, (100, 220, 255), (sx, sy), r_px, 1)
+            pygame.draw.line(screen, (100, 220, 255), (sx - r_px - 2, sy), (sx + r_px + 2, sy), 1)
+            pygame.draw.line(screen, (100, 220, 255), (sx, sy - r_px - 2), (sx, sy + r_px + 2), 1)
 
         # Draw drag-select box
         if _drag_rect is not None and _drag_rect.width > 4 and _drag_rect.height > 4:
