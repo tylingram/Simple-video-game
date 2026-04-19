@@ -31,6 +31,8 @@ DEFAULTS = {
     "CARRIER_ATTACK_RANGE_MM":    {"value": 20.0,   "description": "Max range in mm at which a carrier can fire missiles"},
     # ── Drones ────────────────────────────────────────────────────────────────
     "STARTING_DRONES":            {"value": 5.0,    "description": "Number of drones at game start"},
+    "DRONE_MAX_COUNT":            {"value": 10.0,   "description": "Maximum number of player drones at any time"},
+    "DRONE_RESPAWN_RATE":         {"value": 15.0,   "description": "Seconds between drone respawns while below max count"},
     "DRONE_START_RADIUS_MM":      {"value": 20.0,   "description": "Distance from carrier centre to each drone at start in mm"},
     "DRONE_MAX_RADIUS_MM":        {"value": 300.0,  "description": "Max distance a drone can be commanded from the carrier in mm"},
     "DEFAULT_DRONE_DIAMETER_MM":  {"value": 3.0,    "description": "Diameter of a default drone in mm"},
@@ -173,7 +175,7 @@ def build_ui():
     status = tk.Label(root, text="", bg="#1a1a2e", fg="#4ecca3",
                       font=("Courier", 9), wraplength=320, justify="left")
 
-    FLOAT_KEYS = {"EXPLOSIVE_FIRE_RATE", "ENEMY_EXPLOSIVE_DRONE_RATIO"}
+    FLOAT_KEYS = {"EXPLOSIVE_FIRE_RATE", "ENEMY_EXPLOSIVE_DRONE_RATIO", "DRONE_RESPAWN_RATE"}
 
     def on_save():
         # Parse all values — floats allowed for FLOAT_KEYS, else positive integers

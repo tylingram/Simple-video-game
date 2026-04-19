@@ -60,6 +60,14 @@ _defaults = {
         "value": 5.0,
         "description": "Number of drones at game start",
     },
+    "DRONE_MAX_COUNT": {
+        "value": 10.0,
+        "description": "Maximum number of player drones at any time",
+    },
+    "DRONE_RESPAWN_RATE": {
+        "value": 15.0,
+        "description": "Seconds between drone respawns while below max count",
+    },
     "DRONE_START_RADIUS_MM": {
         "value": 20.0,
         "description": "Distance from carrier centre to each drone at start in mm",
