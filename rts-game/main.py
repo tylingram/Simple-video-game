@@ -557,12 +557,12 @@ async def main():
             for drone in drones:
                 drone.update(dt, carrier.vx, carrier.vy)
 
-            # --- Drone collision: bounce (first 5 s after a move) or hard-stop ---
-            # While a drone's bounce_until timer is active it gets elastic bounce
-            # behaviour; once expired it reverts to the original hard-stop.
-            d_mm      = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
-            max_speed = cfg.get("DEFAULT_DRONE_MAX_SPEED")
-            _now_ms   = pygame.time.get_ticks()
+            # --- Drone collision: single consistent rule (no timers/branches) ---
+            # 1. Push only the mover(s) back — static drones never displaced.
+            # 2. Strip each drone's normal velocity component so they stop
+            #    pressing into each other but keep sideways velocity and slide.
+            # Same behaviour every time regardless of speed or timing.
+            d_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
             for i in range(len(drones)):
                 for j in range(i + 1, len(drones)):
                     a, b = drones[i], drones[j]
@@ -572,63 +572,25 @@ async def main():
                     if dist_sq >= d_mm * d_mm or dist_sq == 0:
                         continue
                     dist_ab = math.sqrt(dist_sq)
-                    nx, ny  = ddx / dist_ab, ddy / dist_ab  # unit vector A→B
+                    nx, ny  = ddx / dist_ab, ddy / dist_ab
                     overlap = d_mm - dist_ab
-
-                    # Positional correction — push equally apart
-                    a.offset_x -= nx * overlap * 0.5
-                    a.offset_y -= ny * overlap * 0.5
-                    b.offset_x += nx * overlap * 0.5
-                    b.offset_y += ny * overlap * 0.5
 
                     a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
                     b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
 
-                    # Positional correction — only push the mover(s).
-                    # Static drone never gets displaced by a moving one.
                     if a_moving and b_moving:
-                        a.offset_x -= nx * overlap * 0.5
-                        a.offset_y -= ny * overlap * 0.5
-                        b.offset_x += nx * overlap * 0.5
-                        b.offset_y += ny * overlap * 0.5
+                        a.offset_x -= nx * overlap * 0.5;  a.offset_y -= ny * overlap * 0.5
+                        b.offset_x += nx * overlap * 0.5;  b.offset_y += ny * overlap * 0.5
                     elif a_moving:
-                        a.offset_x -= nx * overlap
-                        a.offset_y -= ny * overlap
+                        a.offset_x -= nx * overlap;  a.offset_y -= ny * overlap
                     elif b_moving:
-                        b.offset_x += nx * overlap
-                        b.offset_y += ny * overlap
-                    # both static → no positional change needed
+                        b.offset_x += nx * overlap;  b.offset_y += ny * overlap
 
-                    # Bounce vs hard-stop rules:
-                    #   both in motion         → always bounce
-                    #   one moving, one static → bounce for 5 s after command, then hard-stop
-                    #   both static            → no velocity change
-                    if a_moving and b_moving:
-                        do_bounce = True
-                    elif a_moving and not b_moving:
-                        do_bounce = _now_ms < a.bounce_until
-                    elif b_moving and not a_moving:
-                        do_bounce = _now_ms < b.bounce_until
-                    else:
-                        do_bounce = False
-
-                    if do_bounce:
-                        va_n = a.vel_x * nx + a.vel_y * ny
-                        vb_n = b.vel_x * nx + b.vel_y * ny
-                        if va_n - vb_n > 0:
-                            avg_n = (va_n + vb_n) * 0.5
-                            a.vel_x += (avg_n - va_n) * nx
-                            a.vel_y += (avg_n - va_n) * ny
-                            b.vel_x += (avg_n - vb_n) * nx
-                            b.vel_y += (avg_n - vb_n) * ny
-                    elif a_moving or b_moving:
-                        # Hard-stop the mover(s) only
-                        if a_moving:
-                            a.vel_x = 0.0;  a.vel_y = 0.0
-                            a.target_x = a.offset_x;  a.target_y = a.offset_y
-                        if b_moving:
-                            b.vel_x = 0.0;  b.vel_y = 0.0
-                            b.target_x = b.offset_x;  b.target_y = b.offset_y
+                    # Zero normal velocity for each drone (tangential kept)
+                    va_n = a.vel_x * nx + a.vel_y * ny
+                    vb_n = b.vel_x * nx + b.vel_y * ny
+                    a.vel_x -= va_n * nx;  a.vel_y -= va_n * ny
+                    b.vel_x -= vb_n * nx;  b.vel_y -= vb_n * ny
 
             # --- Drone boundary constraints ---
             # Drones must stay inside BOTH the max-radius circle AND the visible
@@ -683,13 +645,11 @@ async def main():
 
             # --- Cross-team drone collision ---
             # Player drones and enemy drones bounce off each other in world space.
-            # Always elastic — both sides are in active motion with intent.
-            _xd_mm  = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
-            _xspeed = cfg.get("DEFAULT_DRONE_MAX_SPEED")
+            # Same single rule as same-team: push mover(s), zero normal vel.
+            _xd_mm = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
             for pd in drones:
                 for ec, ed in zip(enemy_carriers, enemy_drones_list):
                     for ed_d in ed:
-                        # World positions (recompute each pair — offsets may shift)
                         pw_x = carrier.x + pd.offset_x
                         pw_y = carrier.y + pd.offset_y
                         ew_x = ec.x     + ed_d.offset_x
@@ -703,7 +663,7 @@ async def main():
                         nx, ny  = ddx / dist_ab, ddy / dist_ab
                         overlap = _xd_mm - dist_ab
 
-                        # World-space velocities (needed for movement check)
+                        # World-space velocities
                         pv_x = carrier.vx + pd.vel_x
                         pv_y = carrier.vy + pd.vel_y
                         ev_x = ec.vx     + ed_d.vel_x
@@ -724,27 +684,15 @@ async def main():
                             ed_d.offset_x += nx * overlap
                             ed_d.offset_y += ny * overlap
 
-                        # Perfectly inelastic in the normal direction (e=0)
+                        # Zero each drone's normal velocity component (world space)
                         pv_n = pv_x * nx + pv_y * ny
                         ev_n = ev_x * nx + ev_y * ny
-                        if pv_n - ev_n > 0:
-                            avg_n = (pv_n + ev_n) * 0.5
-                            pv_x += (avg_n - pv_n) * nx;  pv_y += (avg_n - pv_n) * ny
-                            ev_x += (avg_n - ev_n) * nx;  ev_y += (avg_n - ev_n) * ny
-                            # Clamp world speed
-                            p_spd = math.sqrt(pv_x ** 2 + pv_y ** 2)
-                            e_spd = math.sqrt(ev_x ** 2 + ev_y ** 2)
-                            if p_spd > _xspeed and p_spd > 0:
-                                pv_x = pv_x / p_spd * _xspeed
-                                pv_y = pv_y / p_spd * _xspeed
-                            if e_spd > _xspeed and e_spd > 0:
-                                ev_x = ev_x / e_spd * _xspeed
-                                ev_y = ev_y / e_spd * _xspeed
-                            # Convert back to carrier-relative velocities
-                            pd.vel_x   = pv_x - carrier.vx
-                            pd.vel_y   = pv_y - carrier.vy
-                            ed_d.vel_x = ev_x - ec.vx
-                            ed_d.vel_y = ev_y - ec.vy
+                        pv_x -= pv_n * nx;  pv_y -= pv_n * ny
+                        ev_x -= ev_n * nx;  ev_y -= ev_n * ny
+                        pd.vel_x   = pv_x - carrier.vx
+                        pd.vel_y   = pv_y - carrier.vy
+                        ed_d.vel_x = ev_x - ec.vx
+                        ed_d.vel_y = ev_y - ec.vy
 
             # --- Combat ---
             # Build per-team target lists: (unit, carrier_ref_or_None)
