@@ -179,6 +179,22 @@ def _reset_game(game_map, ponds, fog, carrier):
     return enemy_carriers, enemy_drones_list, drones, missiles
 
 
+def _find_spawn_pos(existing_drones, d_mm):
+    """Return a carrier-relative (ox, oy) near (0,0) clear of all existing drones."""
+    # Try origin first, then rings of candidates at increasing radii
+    for ring in range(6):
+        r = d_mm * ring if ring > 0 else 0
+        n_pts = max(1, ring * 8)
+        for k in range(n_pts):
+            angle = 2 * math.pi * k / n_pts
+            ox = r * math.cos(angle) if ring > 0 else 0.0
+            oy = r * math.sin(angle) if ring > 0 else 0.0
+            if all(math.sqrt((ox - d.offset_x) ** 2 + (oy - d.offset_y) ** 2) >= d_mm
+                   for d in existing_drones):
+                return ox, oy
+    return 0.0, 0.0   # fallback — extremely unlikely
+
+
 def resolve_carrier_collisions(carriers):
     """
     AABB collision between every pair of carriers.
@@ -332,7 +348,8 @@ async def main():
     _drag_start     = None   # (mx, my) screen pixels where LMB went down
     _drag_rect      = None   # current pygame.Rect of the drag box (None when not dragging)
     _click_markers  = []     # [(offset_x, offset_y, expire_ms), ...]  — move destination pips
-    _respawn_timer  = 0.0    # seconds until next drone respawn
+    _respawn_timer         = 0.0   # seconds until next player drone respawn
+    _enemy_respawn_timers  = []    # one timer per enemy carrier
 
     # Track config.json modification time to reload when editor saves (desktop only)
     if sys.platform != 'emscripten':
@@ -406,23 +423,26 @@ async def main():
                     enemy_drones_list = [create_formation() for _ in range(n_enemies)]
                     enemy_carriers    = [EnemyCarrier(sx, sy, ed)
                                          for (sx, sy), ed in zip(spawn, enemy_drones_list)]
-                    missiles          = []
-                    kills             = 0
-                    _respawn_timer    = cfg.get("DRONE_RESPAWN_RATE")
-                    game_state        = 'playing'
+                    missiles               = []
+                    kills                  = 0
+                    _respawn_timer         = cfg.get("DRONE_RESPAWN_RATE")
+                    _enemy_respawn_timers  = [cfg.get("DRONE_RESPAWN_RATE")] * n_enemies
+                    game_state             = 'playing'
                 elif event.key == pygame.K_RETURN and game_state in ('won', 'lost'):
                     # Return to formation editor — keep saved formations
                     game_map.reset(); ponds.reset(); fog.reset()
                     spawn = game_map.edge_spawn_points(1, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
                     carrier.reset()
                     carrier.x, carrier.y = spawn[0]
-                    drones            = create_formation()
-                    enemy_carriers    = []
-                    enemy_drones_list = []
-                    missiles          = []
-                    explosions        = []
-                    kills             = 0
-                    game_state        = 'formation'
+                    drones                 = create_formation()
+                    enemy_carriers         = []
+                    enemy_drones_list      = []
+                    _enemy_respawn_timers  = []
+                    missiles               = []
+                    explosions             = []
+                    kills                  = 0
+                    _respawn_timer         = cfg.get("DRONE_RESPAWN_RATE")
+                    game_state             = 'formation'
                     paused            = False
                     _last_click_drone = None
                     _last_click_time  = 0
@@ -765,27 +785,43 @@ async def main():
             if carrier.hp <= 0:
                 drones = []
 
-            # --- Drone respawn ---
-            _max_drones = int(cfg.get("DRONE_MAX_COUNT"))
+            # --- Shared respawn settings ---
+            _max_drones   = int(cfg.get("DRONE_MAX_COUNT"))
+            _respawn_rate = cfg.get("DRONE_RESPAWN_RATE")
+            _d_mm         = cfg.get("DEFAULT_DRONE_DIAMETER_MM")
+
+            # --- Enemy drone respawn (same rules as player) ---
+            for i, (ec, ed) in enumerate(zip(enemy_carriers, enemy_drones_list)):
+                if ec.hp > 0 and len(ed) < _max_drones:
+                    _enemy_respawn_timers[i] -= dt
+                    if _enemy_respawn_timers[i] <= 0:
+                        ox, oy = _find_spawn_pos(ed, _d_mm)
+                        ed.append(Drone(ox, oy))
+                        ec.drones = ed
+                        _enemy_respawn_timers[i] = _respawn_rate
+                else:
+                    _enemy_respawn_timers[i] = _respawn_rate
+
+            # --- Player drone respawn ---
             if carrier.hp > 0 and len(drones) < _max_drones:
                 _respawn_timer -= dt
                 if _respawn_timer <= 0:
-                    # Spawn new drone at carrier centre (offset 0,0) — it will
-                    # sit on the carrier until the player commands it elsewhere.
-                    drones.append(Drone(0.0, 0.0))
-                    _respawn_timer = cfg.get("DRONE_RESPAWN_RATE")
+                    ox, oy = _find_spawn_pos(drones, _d_mm)
+                    drones.append(Drone(ox, oy))
+                    _respawn_timer = _respawn_rate
             else:
-                # Reset timer whenever at max so the next loss starts counting fresh
-                _respawn_timer = cfg.get("DRONE_RESPAWN_RATE")
+                _respawn_timer = _respawn_rate
 
             # Remove dead enemy drones; remove dead enemy carriers + their drones
             enemy_drones_list = [[d for d in ed if d.hp > 0]
                                  for ed in enemy_drones_list]
             _prev_n_enemies = len(enemy_carriers)
-            alive = [(ec, ed) for ec, ed in zip(enemy_carriers, enemy_drones_list)
+            alive = [(ec, ed, t) for ec, ed, t in
+                     zip(enemy_carriers, enemy_drones_list, _enemy_respawn_timers)
                      if ec.hp > 0]
-            enemy_carriers    = [ec for ec, ed in alive]
-            enemy_drones_list = [ed for ec, ed in alive]
+            enemy_carriers        = [ec for ec, ed, t in alive]
+            enemy_drones_list     = [ed for ec, ed, t in alive]
+            _enemy_respawn_timers = [t  for ec, ed, t in alive]
             kills += _prev_n_enemies - len(enemy_carriers)
             # Sync each carrier's internal drone list so _command_drones counts
             # only living drones (prevents guards/scouts ratio counting dead ones).
@@ -867,8 +903,23 @@ async def main():
         # Max-radius dotted circle drawn after fog so it's always visible
         max_r_px = int(cfg.get("DRONE_MAX_RADIUS_MM") * px_per_mm)
         draw_dotted_circle(screen, MAX_RADIUS_COLOR, cx, cy, max_r_px)
+        # Spawn-exclusion zone — inner dotted circle (drones can't re-enter once they leave)
+        excl_r_px = max(2, int(cfg.get("CARRIER_WIDTH_MM") * px_per_mm))
+        draw_dotted_circle(screen, (180, 100, 255), cx, cy, excl_r_px)
 
         hud.draw(screen, carrier, drones, kills=kills)
+
+        # Respawn countdown — shown in playing state while below max drones
+        if game_state == 'playing' and carrier.hp > 0:
+            _max_dr = int(cfg.get("DRONE_MAX_COUNT"))
+            if len(drones) < _max_dr:
+                _rt_secs = max(0.0, _respawn_timer)
+                _rt_font = pygame.font.Font(None, 22)
+                _rt_surf = _rt_font.render(
+                    f"Next drone: {_rt_secs:.1f}s  ({len(drones)}/{_max_dr})",
+                    True, (160, 220, 255))
+                screen.blit(_rt_surf, (8, game_h - _rt_surf.get_height() - 4))
+
         if game_state == 'formation':
             draw_formation_overlay(screen, formations, _num_hold_start, game_h)
         elif game_state != 'playing' or paused:

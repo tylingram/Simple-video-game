@@ -62,16 +62,34 @@ class Drone:
         self.fire_cooldown_max  = 1.0   # updated when a shot is fired
         self.has_fired          = False  # arc only shown after first shot
         self.bounce_until       = 0     # ms timestamp; bounce active while ticks < this
+        self.has_left_spawn     = False  # True once drone moves outside spawn exclusion zone
 
     # ── Commanding ────────────────────────────────────────────────────────────
 
     def set_target(self, tx_mm, ty_mm):
-        """Set target carrier-relative offset, clamped to max radius."""
-        max_r = cfg.get("DRONE_MAX_RADIUS_MM")
+        """Set target carrier-relative offset, clamped to max radius.
+        Once a drone has left the spawn exclusion zone it cannot be commanded
+        back inside it — the target is pushed to the zone edge instead.
+        """
+        max_r   = cfg.get("DRONE_MAX_RADIUS_MM")
+        excl_r  = cfg.get("CARRIER_WIDTH_MM")   # spawn exclusion radius
+
+        # Outer clamp
         d = math.sqrt(tx_mm ** 2 + ty_mm ** 2)
         if d > max_r and d > 0:
             tx_mm = tx_mm / d * max_r
             ty_mm = ty_mm / d * max_r
+
+        # Inner exclusion — only applies once the drone has left the zone
+        if self.has_left_spawn:
+            td = math.sqrt(tx_mm ** 2 + ty_mm ** 2)
+            if td < excl_r:
+                if td > 0:
+                    tx_mm = tx_mm / td * excl_r
+                    ty_mm = ty_mm / td * excl_r
+                else:
+                    tx_mm, ty_mm = excl_r, 0.0
+
         self.target_x = tx_mm
         self.target_y = ty_mm
 
@@ -126,6 +144,13 @@ class Drone:
 
         self.offset_x += self.vel_x * dt
         self.offset_y += self.vel_y * dt
+
+        # Mark as left-spawn once outside the exclusion zone so set_target
+        # can start enforcing the inner boundary.
+        if not self.has_left_spawn:
+            excl_r = cfg.get("CARRIER_WIDTH_MM")
+            if math.sqrt(self.offset_x ** 2 + self.offset_y ** 2) > excl_r:
+                self.has_left_spawn = True
 
     # ── Screen helpers ────────────────────────────────────────────────────────
 
