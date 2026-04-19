@@ -626,7 +626,30 @@ async def main():
             _half_w   = (settings.SCREEN_WIDTH / 2) / _ppm - _drone_r
             _half_h   = (game_h / 2) / _ppm - _drone_r
             _max_r    = cfg.get("DRONE_MAX_RADIUS_MM")
+            _excl_r   = cfg.get("CARRIER_WIDTH_MM")
             for d in drones:
+                # 0. Spawn exclusion zone — once left, drone is pushed back out
+                if d.has_left_spawn:
+                    r_in = math.sqrt(d.offset_x ** 2 + d.offset_y ** 2)
+                    if r_in < _excl_r and r_in > 0:
+                        scale_out  = _excl_r / r_in
+                        d.offset_x *= scale_out
+                        d.offset_y *= scale_out
+                        # Cancel inward velocity
+                        nr_x, nr_y = d.offset_x / _excl_r, d.offset_y / _excl_r
+                        v_in = d.vel_x * nr_x + d.vel_y * nr_y
+                        if v_in < 0:
+                            d.vel_x -= v_in * nr_x
+                            d.vel_y -= v_in * nr_y
+                        # Keep target outside too
+                        td = math.sqrt(d.target_x ** 2 + d.target_y ** 2)
+                        if td < _excl_r:
+                            if td > 0:
+                                d.target_x = d.target_x / td * _excl_r
+                                d.target_y = d.target_y / td * _excl_r
+                            else:
+                                d.target_x, d.target_y = _excl_r, 0.0
+
                 # 1. Max-radius circle constraint
                 r = math.sqrt(d.offset_x ** 2 + d.offset_y ** 2)
                 if r > _max_r and r > 0:
@@ -903,22 +926,16 @@ async def main():
         # Max-radius dotted circle drawn after fog so it's always visible
         max_r_px = int(cfg.get("DRONE_MAX_RADIUS_MM") * px_per_mm)
         draw_dotted_circle(screen, MAX_RADIUS_COLOR, cx, cy, max_r_px)
-        # Spawn-exclusion zone — inner dotted circle (drones can't re-enter once they leave)
+        # Spawn-exclusion zone — solid bright circle, always on top of fog
         excl_r_px = max(2, int(cfg.get("CARRIER_WIDTH_MM") * px_per_mm))
-        draw_dotted_circle(screen, (180, 100, 255), cx, cy, excl_r_px)
+        pygame.draw.circle(screen, (200, 80, 255), (cx, cy), excl_r_px, 2)
 
-        hud.draw(screen, carrier, drones, kills=kills)
-
-        # Respawn countdown — shown in playing state while below max drones
-        if game_state == 'playing' and carrier.hp > 0:
-            _max_dr = int(cfg.get("DRONE_MAX_COUNT"))
-            if len(drones) < _max_dr:
-                _rt_secs = max(0.0, _respawn_timer)
-                _rt_font = pygame.font.Font(None, 22)
-                _rt_surf = _rt_font.render(
-                    f"Next drone: {_rt_secs:.1f}s  ({len(drones)}/{_max_dr})",
-                    True, (160, 220, 255))
-                screen.blit(_rt_surf, (8, game_h - _rt_surf.get_height() - 4))
+        _max_dr    = int(cfg.get("DRONE_MAX_COUNT"))
+        _show_resp = (game_state == 'playing' and carrier.hp > 0
+                      and len(drones) < _max_dr)
+        hud.draw(screen, carrier, drones, kills=kills,
+                 respawn_timer=_respawn_timer if _show_resp else None,
+                 drone_max=_max_dr)
 
         if game_state == 'formation':
             draw_formation_overlay(screen, formations, _num_hold_start, game_h)

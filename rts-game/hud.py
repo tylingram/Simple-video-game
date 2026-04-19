@@ -26,7 +26,8 @@ class HUD:
     def update(self, elapsed_secs):
         pass
 
-    def draw(self, surface, carrier=None, drones=None, kills=0):
+    def draw(self, surface, carrier=None, drones=None, kills=0,
+             respawn_timer=None, drone_max=None):
         game_h, hud_h = self._layout()
         rect = pygame.Rect(0, game_h, settings.SCREEN_WIDTH, hud_h)
 
@@ -56,8 +57,13 @@ class HUD:
         font_size = max(12, hud_h // 2)
         font      = self._get_font(font_size)
 
+        respawn_str = ""
+        if respawn_timer is not None and drone_max is not None:
+            respawn_str = f"   RESPAWN {max(0.0, respawn_timer):.1f}s ({n_drones}/{drone_max})"
+
         nav_text    = (f"POS  X:{int(cx):+5d}  Y:{int(cy):+5d} mm"
-                       f"   SPD {int(spd):4d} mm/s")
+                       f"   SPD {int(spd):4d} mm/s"
+                       f"{respawn_str}")
         combat_text = (f"CARRIER  HP {int(carrier.hp)}/{int(carrier.max_hp)}"
                        f"   DRONES {n_drones}"
                        f"  HP {drone_hp_min}/{drone_hp_max} ea"

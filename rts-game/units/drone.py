@@ -62,7 +62,10 @@ class Drone:
         self.fire_cooldown_max  = 1.0   # updated when a shot is fired
         self.has_fired          = False  # arc only shown after first shot
         self.bounce_until       = 0     # ms timestamp; bounce active while ticks < this
-        self.has_left_spawn     = False  # True once drone moves outside spawn exclusion zone
+        # True once drone moves outside spawn exclusion zone.
+        # Pre-set for drones that start outside (e.g. formation drones at DRONE_START_RADIUS).
+        excl_r = cfg.get("CARRIER_WIDTH_MM")
+        self.has_left_spawn = math.sqrt(offset_x_mm ** 2 + offset_y_mm ** 2) > excl_r
 
     # ── Commanding ────────────────────────────────────────────────────────────
 
