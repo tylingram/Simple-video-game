@@ -603,9 +603,13 @@ async def main():
                         va_n = a.vel_x * nx + a.vel_y * ny
                         vb_n = b.vel_x * nx + b.vel_y * ny
                         if va_n - vb_n > 0:
-                            delta = vb_n - va_n
-                            a.vel_x += delta * nx;  a.vel_y += delta * ny
-                            b.vel_x -= delta * nx;  b.vel_y -= delta * ny
+                            # Damped collision (restitution ~0.1 — heavy thud,
+                            # almost no bounce-back).
+                            # delta = -(1+e)/2 * (va_n - vb_n) per drone
+                            e = 0.1
+                            imp = (1.0 + e) * 0.5 * (va_n - vb_n)
+                            a.vel_x -= imp * nx;  a.vel_y -= imp * ny
+                            b.vel_x += imp * nx;  b.vel_y += imp * ny
                             for d in (a, b):
                                 spd = math.sqrt(d.vel_x ** 2 + d.vel_y ** 2)
                                 if spd > max_speed and spd > 0:
@@ -705,13 +709,14 @@ async def main():
                         ev_x = ec.vx     + ed_d.vel_x
                         ev_y = ec.vy     + ed_d.vel_y
 
-                        # Elastic bounce along normal if approaching
+                        # Damped collision along normal if approaching
                         pv_n = pv_x * nx + pv_y * ny
                         ev_n = ev_x * nx + ev_y * ny
                         if pv_n - ev_n > 0:
-                            delta = ev_n - pv_n
-                            pv_x += delta * nx;  pv_y += delta * ny
-                            ev_x -= delta * nx;  ev_y -= delta * ny
+                            e   = 0.1
+                            imp = (1.0 + e) * 0.5 * (pv_n - ev_n)
+                            pv_x -= imp * nx;  pv_y -= imp * ny
+                            ev_x += imp * nx;  ev_y += imp * ny
                             # Clamp world speed
                             p_spd = math.sqrt(pv_x ** 2 + pv_y ** 2)
                             e_spd = math.sqrt(ev_x ** 2 + ev_y ** 2)
