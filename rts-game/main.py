@@ -350,6 +350,7 @@ async def main():
     _click_markers  = []     # [(offset_x, offset_y, expire_ms), ...]  — move destination pips
     _respawn_timer         = 0.0   # seconds until next player drone respawn
     _enemy_respawn_timers  = []    # one timer per enemy carrier
+    _group_move_counter    = 1     # incremented each group move; shared by all drones in move
 
     # Track config.json modification time to reload when editor saves (desktop only)
     if sys.platform != 'emscripten':
@@ -530,9 +531,11 @@ async def main():
                             # Shift each drone by the same delta so spacing is kept
                             dx, dy = ox - cx_g, oy - cy_g
                             _bounce_expire = pygame.time.get_ticks() + 5000
+                            _group_move_counter += 1
                             for d in selected:
                                 d.set_target(d.offset_x + dx, d.offset_y + dy)
-                                d.bounce_until = _bounce_expire
+                                d.bounce_until    = _bounce_expire
+                                d.group_move_id   = _group_move_counter
                             _click_markers.append((ox, oy, pygame.time.get_ticks() + 1000))
                             # Keep selection — drones stay highlighted so the
                             # player can keep clicking new destinations without
@@ -588,6 +591,10 @@ async def main():
             for i in range(len(drones)):
                 for j in range(i + 1, len(drones)):
                     a, b = drones[i], drones[j]
+                    # Skip collision between drones moving together as a group
+                    if (a.group_move_id != 0
+                            and a.group_move_id == b.group_move_id):
+                        continue
                     ddx = b.offset_x - a.offset_x
                     ddy = b.offset_y - a.offset_y
                     dist_sq = ddx * ddx + ddy * ddy

@@ -62,6 +62,7 @@ class Drone:
         self.fire_cooldown_max  = 1.0   # updated when a shot is fired
         self.has_fired          = False  # arc only shown after first shot
         self.bounce_until       = 0     # ms timestamp; bounce active while ticks < this
+        self.group_move_id      = 0     # non-zero while part of an active group move
         # True once drone moves outside spawn exclusion zone.
         # Pre-set for drones that start outside (e.g. formation drones at DRONE_START_RADIUS).
         excl_r = cfg.get("CARRIER_WIDTH_MM")
@@ -113,10 +114,11 @@ class Drone:
         dist = math.sqrt(dx * dx + dy * dy)
 
         if dist < ARRIVE_THRESHOLD_MM:
-            self.offset_x = self.target_x
-            self.offset_y = self.target_y
-            self.vel_x    = 0.0
-            self.vel_y    = 0.0
+            self.offset_x    = self.target_x
+            self.offset_y    = self.target_y
+            self.vel_x       = 0.0
+            self.vel_y       = 0.0
+            self.group_move_id = 0   # arrived — rejoin normal collision pool
             return
 
         arrive_nx = dx / dist
