@@ -53,8 +53,22 @@ DEFAULTS = {
 }
 
 
+DEFAULTS_FILE = Path(__file__).parent / "config.defaults.json"
+
+
 def load():
+    """Load order matches config.py: code defaults → config.defaults.json → config.json."""
     data = {k: dict(v) for k, v in DEFAULTS.items()}
+    # 1. Apply shared baseline from the git-tracked defaults file
+    if DEFAULTS_FILE.exists():
+        try:
+            shared = json.loads(DEFAULTS_FILE.read_text())
+            for key, value in shared.items():
+                if key in data:
+                    data[key]["value"] = value
+        except Exception:
+            pass
+    # 2. Apply personal overrides from config.json
     if SAVE_FILE.exists():
         try:
             saved = json.loads(SAVE_FILE.read_text())
