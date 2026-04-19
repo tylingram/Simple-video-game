@@ -584,12 +584,25 @@ async def main():
                     a_moving = math.sqrt(a.vel_x ** 2 + a.vel_y ** 2) > 0.5
                     b_moving = math.sqrt(b.vel_x ** 2 + b.vel_y ** 2) > 0.5
 
+                    # Positional correction — only push the mover(s).
+                    # Static drone never gets displaced by a moving one.
+                    if a_moving and b_moving:
+                        a.offset_x -= nx * overlap * 0.5
+                        a.offset_y -= ny * overlap * 0.5
+                        b.offset_x += nx * overlap * 0.5
+                        b.offset_y += ny * overlap * 0.5
+                    elif a_moving:
+                        a.offset_x -= nx * overlap
+                        a.offset_y -= ny * overlap
+                    elif b_moving:
+                        b.offset_x += nx * overlap
+                        b.offset_y += ny * overlap
+                    # both static → no positional change needed
+
                     # Bounce vs hard-stop rules:
-                    #   both in motion         → always bounce (two navigating drones
-                    #                            deflect off each other freely)
-                    #   one moving, one static → bounce only while mover's 5 s timer
-                    #                            is active; after that hard-stop
-                    #   both static            → positional correction only
+                    #   both in motion         → always bounce
+                    #   one moving, one static → bounce for 5 s after command, then hard-stop
+                    #   both static            → no velocity change
                     if a_moving and b_moving:
                         do_bounce = True
                     elif a_moving and not b_moving:
@@ -603,17 +616,13 @@ async def main():
                         va_n = a.vel_x * nx + a.vel_y * ny
                         vb_n = b.vel_x * nx + b.vel_y * ny
                         if va_n - vb_n > 0:
-                            # Perfectly inelastic in the normal direction (e=0):
-                            # set both normal components to their average so they
-                            # stop pressing into each other but keep all tangential
-                            # velocity — consistent "roll off" every time.
                             avg_n = (va_n + vb_n) * 0.5
                             a.vel_x += (avg_n - va_n) * nx
                             a.vel_y += (avg_n - va_n) * ny
                             b.vel_x += (avg_n - vb_n) * nx
                             b.vel_y += (avg_n - vb_n) * ny
                     elif a_moving or b_moving:
-                        # Hard-stop the mover(s)
+                        # Hard-stop the mover(s) only
                         if a_moving:
                             a.vel_x = 0.0;  a.vel_y = 0.0
                             a.target_x = a.offset_x;  a.target_y = a.offset_y
@@ -694,17 +703,26 @@ async def main():
                         nx, ny  = ddx / dist_ab, ddy / dist_ab
                         overlap = _xd_mm - dist_ab
 
-                        # Positional correction in world space → update offsets
-                        pd.offset_x  -= nx * overlap * 0.5
-                        pd.offset_y  -= ny * overlap * 0.5
-                        ed_d.offset_x += nx * overlap * 0.5
-                        ed_d.offset_y += ny * overlap * 0.5
-
-                        # World-space velocities
+                        # World-space velocities (needed for movement check)
                         pv_x = carrier.vx + pd.vel_x
                         pv_y = carrier.vy + pd.vel_y
                         ev_x = ec.vx     + ed_d.vel_x
                         ev_y = ec.vy     + ed_d.vel_y
+                        p_moving = math.sqrt(pv_x ** 2 + pv_y ** 2) > 0.5
+                        e_moving = math.sqrt(ev_x ** 2 + ev_y ** 2) > 0.5
+
+                        # Positional correction — only push the mover(s)
+                        if p_moving and e_moving:
+                            pd.offset_x   -= nx * overlap * 0.5
+                            pd.offset_y   -= ny * overlap * 0.5
+                            ed_d.offset_x += nx * overlap * 0.5
+                            ed_d.offset_y += ny * overlap * 0.5
+                        elif p_moving:
+                            pd.offset_x -= nx * overlap
+                            pd.offset_y -= ny * overlap
+                        elif e_moving:
+                            ed_d.offset_x += nx * overlap
+                            ed_d.offset_y += ny * overlap
 
                         # Perfectly inelastic in the normal direction (e=0)
                         pv_n = pv_x * nx + pv_y * ny
