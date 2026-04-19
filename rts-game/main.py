@@ -436,6 +436,12 @@ async def main():
                             d.bounce_until = _bounce_exp_r
                         for d in drones:
                             d.selected = False
+                elif event.key == pygame.K_SPACE and game_state in ('formation', 'playing') and not paused:
+                    # Space: deselect all drones
+                    for d in drones:
+                        d.selected = False
+                    _drag_start = None
+                    _drag_rect  = None
                 elif event.key in _NUM_KEYS and game_state in ('formation', 'playing') and not paused:
                     _num_hold_start[event.key] = pygame.time.get_ticks()
 
@@ -461,14 +467,6 @@ async def main():
                 if sys.platform != 'emscripten':
                     settings.SCREEN_WIDTH  = event.x
                     settings.SCREEN_HEIGHT = event.y
-
-            elif (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE
-                  and game_state in ('formation', 'playing') and not paused):
-                # Space: deselect all drones
-                for d in drones:
-                    d.selected = False
-                _drag_start = None
-                _drag_rect  = None
 
             elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
                   and game_state in ('formation', 'playing') and not paused):
