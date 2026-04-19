@@ -603,18 +603,15 @@ async def main():
                         va_n = a.vel_x * nx + a.vel_y * ny
                         vb_n = b.vel_x * nx + b.vel_y * ny
                         if va_n - vb_n > 0:
-                            # Damped collision (restitution ~0.1 — heavy thud,
-                            # almost no bounce-back).
-                            # delta = -(1+e)/2 * (va_n - vb_n) per drone
-                            e = 0.1
-                            imp = (1.0 + e) * 0.5 * (va_n - vb_n)
-                            a.vel_x -= imp * nx;  a.vel_y -= imp * ny
-                            b.vel_x += imp * nx;  b.vel_y += imp * ny
-                            for d in (a, b):
-                                spd = math.sqrt(d.vel_x ** 2 + d.vel_y ** 2)
-                                if spd > max_speed and spd > 0:
-                                    d.vel_x = d.vel_x / spd * max_speed
-                                    d.vel_y = d.vel_y / spd * max_speed
+                            # Perfectly inelastic in the normal direction (e=0):
+                            # set both normal components to their average so they
+                            # stop pressing into each other but keep all tangential
+                            # velocity — consistent "roll off" every time.
+                            avg_n = (va_n + vb_n) * 0.5
+                            a.vel_x += (avg_n - va_n) * nx
+                            a.vel_y += (avg_n - va_n) * ny
+                            b.vel_x += (avg_n - vb_n) * nx
+                            b.vel_y += (avg_n - vb_n) * ny
                     elif a_moving or b_moving:
                         # Hard-stop the mover(s)
                         if a_moving:
@@ -709,14 +706,13 @@ async def main():
                         ev_x = ec.vx     + ed_d.vel_x
                         ev_y = ec.vy     + ed_d.vel_y
 
-                        # Damped collision along normal if approaching
+                        # Perfectly inelastic in the normal direction (e=0)
                         pv_n = pv_x * nx + pv_y * ny
                         ev_n = ev_x * nx + ev_y * ny
                         if pv_n - ev_n > 0:
-                            e   = 0.1
-                            imp = (1.0 + e) * 0.5 * (pv_n - ev_n)
-                            pv_x -= imp * nx;  pv_y -= imp * ny
-                            ev_x += imp * nx;  ev_y += imp * ny
+                            avg_n = (pv_n + ev_n) * 0.5
+                            pv_x += (avg_n - pv_n) * nx;  pv_y += (avg_n - pv_n) * ny
+                            ev_x += (avg_n - ev_n) * nx;  ev_y += (avg_n - ev_n) * ny
                             # Clamp world speed
                             p_spd = math.sqrt(pv_x ** 2 + pv_y ** 2)
                             e_spd = math.sqrt(ev_x ** 2 + ev_y ** 2)
