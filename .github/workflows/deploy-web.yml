@@ -85,6 +85,13 @@ jobs:
           p.write_text(html, encoding='utf-8')
           PYEOF
 
+      - name: Copy lobby and inject server URL
+        env:
+          MP_SERVER_URL: ${{ vars.MP_SERVER_URL || 'wss://island-rts-server.onrender.com' }}
+        run: |
+          cp rts-game/lobby.html rts-game/build/web/lobby.html
+          sed -i "s|REPLACE_SERVER_URL|$MP_SERVER_URL|g" rts-game/build/web/lobby.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
