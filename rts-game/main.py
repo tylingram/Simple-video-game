@@ -96,9 +96,10 @@ class GhostDrone:
         self.max_hp       = float(s.get("max_hp",       self.max_hp))
         self.missile_type = s.get("missile_type", self.missile_type)
 
-    # Borrow draw_world from Drone — GhostDrone has all the attrs it needs
+    # Borrow draw methods from Drone — GhostDrone has all the attrs they need
     from units.drone import Drone as _D
-    draw_world = _D.draw_world
+    draw_world = _D.draw_world   # calls self._draw_hp internally
+    _draw_hp   = _D._draw_hp
     del _D
 
 
