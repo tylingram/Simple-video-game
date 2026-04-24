@@ -357,7 +357,7 @@ async def main():
             await asyncio.sleep(0.033)
             if mp.is_ready():
                 break
-        mp.send({"type": "join_game", "room_id": mp_room, "role": mp_role})
+        mp.send({"type": "join_room", "room_id": mp_room, "role": mp_role})
 
     # Spawn player + enemies at the island edge, spaced by drone max radius
     if mp_mode:
