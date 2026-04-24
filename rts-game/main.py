@@ -22,6 +22,17 @@ MAX_RADIUS_COLOR        = (90,  90, 125)   # grey-blue  — max drone roam radiu
 
 # ── Multiplayer ghost objects ─────────────────────────────────────────────────
 
+_GHOST_CARRIER_COLOR  = (210,  45,  45)
+_GHOST_CARRIER_BORDER = (255, 120, 120)
+_ghost_font_cache: dict = {}
+
+
+def _ghost_font(size: int):
+    if size not in _ghost_font_cache:
+        _ghost_font_cache[size] = pygame.font.Font(None, size)
+    return _ghost_font_cache[size]
+
+
 class GhostCarrier:
     """Remote player's carrier — position/HP updated from network state each frame.
     Has the same attribute interface as EnemyCarrier so Missile can target it."""
@@ -33,7 +44,7 @@ class GhostCarrier:
         self.vy     = 0.0
         self.hp     = float(max_hp)
         self.max_hp = float(max_hp)
-        self.trail  = []          # no trail needed
+        self.trail  = []
 
     def apply_state(self, s: dict) -> None:
         self.x      = float(s.get("x",      self.x))
@@ -44,31 +55,38 @@ class GhostCarrier:
         self.max_hp = float(s.get("max_hp", self.max_hp))
 
     def draw(self, surface, camera_x_mm, camera_y_mm, game_h, px):
-        """Draw exactly like an EnemyCarrier (red)."""
-        from units.enemy_carrier import COLOR, BORDER, _draw_hp_bar, _get_font
         w  = max(1, int(cfg.get("CARRIER_WIDTH_MM")  * px))
         h  = max(1, int(cfg.get("CARRIER_HEIGHT_MM") * px))
         sx = int((self.x - camera_x_mm) * px)
         sy = int((self.y - camera_y_mm) * px)
         if (-w <= sx < settings.SCREEN_WIDTH + w and -h <= sy < game_h + h):
             rect = pygame.Rect(sx - w // 2, sy - h // 2, w, h)
-            pygame.draw.rect(surface, COLOR,  rect)
-            pygame.draw.rect(surface, BORDER, rect, 1)
-            font = _get_font(max(8, min(w, h) - 4))
-            surf = font.render(str(max(0, int(self.hp))), True, (255, 255, 255))
-            surface.blit(surf, surf.get_rect(center=(sx, sy)))
-            _draw_hp_bar(surface, sx - w // 2, sy - h // 2 - 5, w, self.hp, self.max_hp)
+            pygame.draw.rect(surface, _GHOST_CARRIER_COLOR,  rect)
+            pygame.draw.rect(surface, _GHOST_CARRIER_BORDER, rect, 1)
+            font = _ghost_font(max(8, min(w, h) - 4))
+            txt  = font.render(str(max(0, int(self.hp))), True, (255, 255, 255))
+            surface.blit(txt, txt.get_rect(center=(sx, sy)))
+            # HP bar
+            frac  = max(0.0, min(1.0, self.hp / max(1.0, self.max_hp)))
+            bar_w = max(1, int(w * frac))
+            r = int(40  + 180 * (1.0 - frac))
+            g = int(200 - 160 * (1.0 - frac))
+            pygame.draw.rect(surface, (35, 10, 10),
+                             pygame.Rect(sx - w // 2, sy - h // 2 - 5, w, 3))
+            pygame.draw.rect(surface, (r, g, 40),
+                             pygame.Rect(sx - w // 2, sy - h // 2 - 5, bar_w, 3))
 
 
 class GhostDrone:
     """Remote player's drone — updated from network state.
-    Has the same attribute interface as Drone so Missile can target it."""
+    Has the same attribute interface as Drone so Missile can target it.
+    draw_world is inherited from Drone at class definition time."""
 
     def __init__(self):
-        self.offset_x    = 0.0
-        self.offset_y    = 0.0
-        self.hp          = float(cfg.get("DRONE_HP"))
-        self.max_hp      = self.hp
+        self.offset_x     = 0.0
+        self.offset_y     = 0.0
+        self.hp           = float(cfg.get("DRONE_HP"))
+        self.max_hp       = self.hp
         self.missile_type = "normal"
 
     def apply_state(self, s: dict) -> None:
@@ -77,6 +95,11 @@ class GhostDrone:
         self.hp           = float(s.get("hp",           self.hp))
         self.max_hp       = float(s.get("max_hp",       self.max_hp))
         self.missile_type = s.get("missile_type", self.missile_type)
+
+    # Borrow draw_world from Drone — GhostDrone has all the attrs it needs
+    from units.drone import Drone as _D
+    draw_world = _D.draw_world
+    del _D
 
 
 PLAYER_ATTACK_COLOR     = (50, 185, 100)   # vivid muted green — player attack range
