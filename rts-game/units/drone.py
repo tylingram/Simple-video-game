@@ -48,6 +48,7 @@ class Drone:
     """
 
     def __init__(self, offset_x_mm, offset_y_mm):
+        self.drone_id = id(self)       # stable identity for MP fire targeting
         self.offset_x = offset_x_mm   # current carrier-relative offset (mm)
         self.offset_y = offset_y_mm
         self.target_x = offset_x_mm   # commanded target offset (mm)

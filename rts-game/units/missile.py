@@ -80,9 +80,12 @@ class Missile:
                   EXPLOSIVE_BLAST_RADIUS_MM of the impact point on hit
     """
 
-    def __init__(self, x, y, target, carrier_ref, team, explosive=False):
+    def __init__(self, x, y, target, carrier_ref, team, explosive=False, max_range=None):
         self.x           = float(x)
         self.y           = float(y)
+        self.origin_x    = float(x)   # firing position, for range enforcement
+        self.origin_y    = float(y)
+        self.max_range   = max_range  # missile expires beyond this distance (mm)
         self.target      = target
         self.carrier_ref = carrier_ref
         self.team        = team
@@ -103,6 +106,10 @@ class Missile:
         if self.target.hp <= 0:
             self.alive = False
             return
+        if self.max_range is not None:
+            if math.hypot(self.x - self.origin_x, self.y - self.origin_y) > self.max_range:
+                self.alive = False
+                return
         tx, ty = self._target_pos()
         dx, dy = tx - self.x, ty - self.y
         dist   = math.hypot(dx, dy)

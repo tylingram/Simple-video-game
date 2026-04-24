@@ -83,6 +83,7 @@ class GhostDrone:
     draw_world is inherited from Drone at class definition time."""
 
     def __init__(self):
+        self.remote_id    = -1         # drone_id as assigned by the opponent
         self.offset_x     = 0.0
         self.offset_y     = 0.0
         self.hp           = float(cfg.get("DRONE_HP"))
@@ -90,6 +91,7 @@ class GhostDrone:
         self.missile_type = "normal"
 
     def apply_state(self, s: dict) -> None:
+        self.remote_id    = int(s.get("drone_id",       self.remote_id))
         self.offset_x     = float(s.get("ox",           self.offset_x))
         self.offset_y     = float(s.get("oy",           self.offset_y))
         self.hp           = float(s.get("hp",           self.hp))
@@ -331,7 +333,10 @@ def _maybe_fire(shooter, sx, sy, targets, missiles, team, dt,
             shooter.fire_cooldown_max = cooldown
         if hasattr(shooter, 'has_fired'):
             shooter.has_fired = True
-        missiles.append(Missile(sx, sy, unit, cref, team, explosive=explosive))
+        m = Missile(sx, sy, unit, cref, team, explosive=explosive,
+                    max_range=attack_range)
+        m.shooter_id = getattr(shooter, 'drone_id', -1)  # -1 means carrier
+        missiles.append(m)
 
 
 async def main():
@@ -552,6 +557,13 @@ async def main():
         # --- Multiplayer network tick ---
         if mp_mode and game_state == 'playing':
             try:
+                # Dead-reckon ghost carrier between state-sync packets so its
+                # position (and all ghost-drone world positions) stay smooth.
+                # apply_state() below will correct any drift when packets arrive.
+                if ghost_carrier is not None:
+                    ghost_carrier.x += ghost_carrier.vx * dt
+                    ghost_carrier.y += ghost_carrier.vy * dt
+
                 # Process inbound messages
                 for msg in mp.poll():
                     mtype = msg.get("type")
@@ -564,16 +576,44 @@ async def main():
                         for gd, gs in zip(ghost_drones, ds):
                             gd.apply_state(gs)
                     elif mtype == "fire":
-                        fx, fy = float(msg.get("fx", 0)), float(msg.get("fy", 0))
-                        tt     = msg.get("target_type", "carrier")
-                        tidx   = int(msg.get("target_idx", 0))
-                        expl   = msg.get("explosive", False)
-                        if tt == "drone" and 0 <= tidx < len(drones):
-                            target, cref = drones[tidx], carrier
+                        tt         = msg.get("target_type", "carrier")
+                        target_id  = int(msg.get("target_id", -1))
+                        shooter_id = int(msg.get("shooter_id", -1))
+                        expl       = msg.get("explosive", False)
+                        # Find the local unit being targeted
+                        if tt == "drone":
+                            tgt_drone = next(
+                                (d for d in drones
+                                 if d.drone_id == target_id and d.hp > 0),
+                                None
+                            )
+                            target, cref = (tgt_drone, carrier) if tgt_drone else (carrier, None)
                         else:
                             target, cref = carrier, None
+                        # Origin missile at ghost's current LOCAL position so it
+                        # can never visually travel beyond the attack range circle
+                        if shooter_id == -1:
+                            # Carrier shot
+                            fx_local  = ghost_carrier.x
+                            fy_local  = ghost_carrier.y
+                            max_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
+                        else:
+                            gshooter = next(
+                                (gd for gd in ghost_drones
+                                 if gd.remote_id == shooter_id),
+                                None
+                            )
+                            if gshooter:
+                                fx_local = ghost_carrier.x + gshooter.offset_x
+                                fy_local = ghost_carrier.y + gshooter.offset_y
+                            else:
+                                fx_local = ghost_carrier.x
+                                fy_local = ghost_carrier.y
+                            max_range = cfg.get("DRONE_ATTACK_RANGE_MM")
                         if target.hp > 0:
-                            missiles.append(Missile(fx, fy, target, cref, "enemy", explosive=expl))
+                            missiles.append(Missile(fx_local, fy_local, target, cref,
+                                                    "enemy", explosive=expl,
+                                                    max_range=max_range))
                     elif mtype == "game_over":
                         game_state = "lost"
                     elif mtype == "opponent_disconnected":
@@ -590,7 +630,8 @@ async def main():
                             "hp": carrier.hp, "max_hp": carrier.max_hp,
                         },
                         "drones": [
-                            {"ox": d.offset_x, "oy": d.offset_y,
+                            {"drone_id": d.drone_id,
+                             "ox": d.offset_x, "oy": d.offset_y,
                              "hp": d.hp, "max_hp": d.max_hp,
                              "missile_type": d.missile_type}
                             for d in drones
@@ -701,23 +742,20 @@ async def main():
             if mp_mode and len(missiles) > prev_missile_count:
                 for m in missiles[prev_missile_count:]:
                     if m.team == 'player':
-                        # Determine which of our local units the missile came from
-                        # target is a ghost — tell opponent which of THEIR units to target
+                        # Use stable remote_id so opponent can find the correct
+                        # drone regardless of index shifts from drone deaths
                         if m.target is ghost_carrier:
-                            tt, tidx = "carrier", 0
+                            tt        = "carrier"
+                            target_id = -1
                         else:
-                            try:
-                                tidx = ghost_drones.index(m.target)
-                                tt   = "drone"
-                            except ValueError:
-                                tt, tidx = "carrier", 0
+                            tt        = "drone"
+                            target_id = m.target.remote_id
                         mp.send({
-                            "type":       "fire",
-                            "room_id":    mp.room_id,
-                            "fx":         m.x,
-                            "fy":         m.y,
+                            "type":        "fire",
+                            "room_id":     mp.room_id,
+                            "shooter_id":  getattr(m, 'shooter_id', -1),
                             "target_type": tt,
-                            "target_idx":  tidx,
+                            "target_id":   target_id,
                             "explosive":   m.explosive,
                         })
             # Each enemy carrier is its own "player" with its own vision + attack range
