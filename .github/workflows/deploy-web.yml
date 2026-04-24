@@ -43,9 +43,35 @@ jobs:
           canvas{background:#000;}
           </style>
           <script>
-          /* Force canvas to 16:9 centered, overriding pygbag inline styles via setProperty+important.
-             MutationObserver re-applies whenever pygbag resets the style attribute so mouse
-             coords (derived from getBoundingClientRect) stay in sync with the visual position. */
+          /* ── Multiplayer WebSocket (pure JS, no pyodide internals needed) ──
+             Reads URL params, connects to the relay server, and exposes
+             mp_ready / mp_send / mp_poll / mp_close on window so that
+             Python can call them via `import js; js.window.mp_*()`.        */
+          (function(){
+            var params = new URLSearchParams(window.location.search);
+            var inBuf = [], ws = null;
+            if(params.get('mp') === '1'){
+              var serverUrl = params.get('server');
+              var roomId    = params.get('room');
+              var role      = params.get('role');
+              if(serverUrl && roomId && role){
+                ws = new WebSocket(serverUrl);
+                ws.onopen = function(){
+                  console.log('[MP] connected, joining room ' + roomId + ' as ' + role);
+                  ws.send(JSON.stringify({type:'join_room', room_id:roomId, role:role}));
+                };
+                ws.onmessage = function(e){ inBuf.push(e.data); };
+                ws.onerror   = function(e){ console.error('[MP] WS error', e); };
+                ws.onclose   = function()  { console.log('[MP] WS closed'); };
+              }
+            }
+            window.mp_ready = function(){ return ws !== null && ws.readyState === 1; };
+            window.mp_send  = function(s){ if(ws && ws.readyState === 1) ws.send(s); };
+            window.mp_poll  = function(){ var o = JSON.stringify(inBuf); inBuf = []; return o; };
+            window.mp_close = function(){ if(ws) ws.close(); };
+          })();
+
+          /* ── Canvas 16:9 centering (MutationObserver) ── */
           (function(){
             var busy = false;
             function fix(){
