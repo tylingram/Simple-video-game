@@ -106,7 +106,7 @@ def _inject_js(server_url: str) -> None:
 }})();
 """
     try:
-        from js import eval as js_eval   # noqa: A001
-        js_eval(js_code)
+        import js
+        js.eval(js_code)
     except Exception as e:
         print(f"mp._inject_js error: {e}")

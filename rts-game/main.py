@@ -361,6 +361,13 @@ async def main():
 
     # Spawn player + enemies at the island edge, spaced by drone max radius
     if mp_mode:
+        # Seed random from room_id so both players generate the identical island
+        import random as _rng
+        _seed = int.from_bytes(mp_room.encode(), 'big') % (2 ** 31)
+        _rng.seed(_seed)
+        game_map.reset()
+        ponds.reset()
+        fog.reset()
         # In multiplayer: 2 spawn points (local + remote)
         spawn = game_map.edge_spawn_points(2, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
         carrier.x, carrier.y = spawn[0]
@@ -516,55 +523,53 @@ async def main():
 
         # --- Multiplayer network tick ---
         if mp_mode and game_state == 'playing':
-            # Process inbound messages
-            for msg in mp.poll():
-                mtype = msg.get("type")
-                if mtype == "game_state":
-                    cs = msg.get("carrier", {})
-                    ghost_carrier.apply_state(cs)
-                    ds = msg.get("drones", [])
-                    # Grow/shrink ghost_drones list to match
-                    while len(ghost_drones) < len(ds):
-                        ghost_drones.append(GhostDrone())
-                    del ghost_drones[len(ds):]
-                    for gd, gs in zip(ghost_drones, ds):
-                        gd.apply_state(gs)
-                elif mtype == "fire":
-                    # Opponent fired — create a missile targeting our local units
-                    fx, fy = float(msg.get("fx", 0)), float(msg.get("fy", 0))
-                    tt     = msg.get("target_type", "carrier")
-                    tidx   = int(msg.get("target_idx", 0))
-                    expl   = msg.get("explosive", False)
-                    if tt == "carrier":
-                        target, cref = carrier, None
-                    elif tt == "drone" and 0 <= tidx < len(drones):
-                        target, cref = drones[tidx], carrier
-                    else:
-                        target, cref = carrier, None
-                    if target.hp > 0:
-                        missiles.append(Missile(fx, fy, target, cref, "enemy", explosive=expl))
-                elif mtype == "game_over":
-                    game_state = "lost"
-                elif mtype == "opponent_disconnected":
-                    game_state = "won"
+            try:
+                # Process inbound messages
+                for msg in mp.poll():
+                    mtype = msg.get("type")
+                    if mtype == "game_state":
+                        ghost_carrier.apply_state(msg.get("carrier", {}))
+                        ds = msg.get("drones", [])
+                        while len(ghost_drones) < len(ds):
+                            ghost_drones.append(GhostDrone())
+                        del ghost_drones[len(ds):]
+                        for gd, gs in zip(ghost_drones, ds):
+                            gd.apply_state(gs)
+                    elif mtype == "fire":
+                        fx, fy = float(msg.get("fx", 0)), float(msg.get("fy", 0))
+                        tt     = msg.get("target_type", "carrier")
+                        tidx   = int(msg.get("target_idx", 0))
+                        expl   = msg.get("explosive", False)
+                        if tt == "drone" and 0 <= tidx < len(drones):
+                            target, cref = drones[tidx], carrier
+                        else:
+                            target, cref = carrier, None
+                        if target.hp > 0:
+                            missiles.append(Missile(fx, fy, target, cref, "enemy", explosive=expl))
+                    elif mtype == "game_over":
+                        game_state = "lost"
+                    elif mtype == "opponent_disconnected":
+                        game_state = "won"
 
-            # Send local state to opponent every frame
-            if not paused:
-                mp.send({
-                    "type":    "game_state",
-                    "room_id": mp.room_id,
-                    "carrier": {
-                        "x": carrier.x, "y": carrier.y,
-                        "vx": carrier.vx, "vy": carrier.vy,
-                        "hp": carrier.hp, "max_hp": carrier.max_hp,
-                    },
-                    "drones": [
-                        {"ox": d.offset_x, "oy": d.offset_y,
-                         "hp": d.hp, "max_hp": d.max_hp,
-                         "missile_type": d.missile_type}
-                        for d in drones
-                    ],
-                })
+                # Send local state to opponent every frame
+                if not paused:
+                    mp.send({
+                        "type":    "game_state",
+                        "room_id": mp.room_id,
+                        "carrier": {
+                            "x": carrier.x, "y": carrier.y,
+                            "vx": carrier.vx, "vy": carrier.vy,
+                            "hp": carrier.hp, "max_hp": carrier.max_hp,
+                        },
+                        "drones": [
+                            {"ox": d.offset_x, "oy": d.offset_y,
+                             "hp": d.hp, "max_hp": d.max_hp,
+                             "missile_type": d.missile_type}
+                            for d in drones
+                        ],
+                    })
+            except Exception as _mp_err:
+                print(f"MP tick error: {_mp_err}")
 
         # --- Update ---
         if game_state == 'playing' and not paused:
