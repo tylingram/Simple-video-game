@@ -368,10 +368,14 @@ async def main():
         game_map.reset()
         ponds.reset()
         fog.reset()
-        # In multiplayer: 2 spawn points (local + remote)
+        # In multiplayer: 2 spawn points — host gets [0], guest gets [1]
         spawn = game_map.edge_spawn_points(2, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
-        carrier.x, carrier.y = spawn[0]
-        gx, gy = spawn[1]
+        if mp_role == 'host':
+            carrier.x, carrier.y = spawn[0]
+            gx, gy = spawn[1]
+        else:
+            carrier.x, carrier.y = spawn[1]
+            gx, gy = spawn[0]
         ghost_carrier = GhostCarrier(gx, gy, max_hp=int(cfg.get("CARRIER_HP")))
         ghost_drones  = [GhostDrone() for _ in range(int(cfg.get("STARTING_DRONES")))]
         enemy_carriers    = []
