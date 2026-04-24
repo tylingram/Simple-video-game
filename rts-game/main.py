@@ -615,7 +615,9 @@ async def main():
                                                     "enemy", explosive=expl,
                                                     max_range=max_range))
                     elif mtype == "game_over":
-                        game_state = "lost"
+                        # Opponent's carrier died — we won (only if still playing)
+                        if game_state == 'playing':
+                            game_state = "won"
                     elif mtype == "opponent_disconnected":
                         game_state = "won"
 
@@ -810,12 +812,12 @@ async def main():
 
             # Win / loss check
             if mp_mode:
-                if ghost_carrier.hp <= 0 and game_state == 'playing':
-                    game_state = 'won'
-                    mp.send({"type": "game_over", "room_id": mp.room_id, "winner": mp.role})
-                elif carrier.hp <= 0 and game_state == 'playing':
+                # Only the player whose carrier dies sends game_over.
+                # The opponent receives it and knows they won.
+                # This avoids both players being marked as defeated.
+                if carrier.hp <= 0 and game_state == 'playing':
                     game_state = 'lost'
-                    mp.send({"type": "game_over", "room_id": mp.room_id, "winner": "opponent"})
+                    mp.send({"type": "game_over", "room_id": mp.room_id})
             else:
                 if not enemy_carriers:
                     game_state = 'won'
