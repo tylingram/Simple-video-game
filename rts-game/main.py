@@ -37,6 +37,8 @@ class GhostCarrier:
     """Remote player's carrier — position/HP updated from network state each frame.
     Has the same attribute interface as EnemyCarrier so Missile can target it."""
 
+    _is_ghost = True   # missiles must not modify HP; state_sync is authoritative
+
     def __init__(self, x: float, y: float, max_hp: int = 5):
         self.x        = float(x)
         self.y        = float(y)
@@ -84,6 +86,8 @@ class GhostDrone:
     """Remote player's drone — updated from network state.
     Has the same attribute interface as Drone so Missile can target it.
     draw_world is inherited from Drone at class definition time."""
+
+    _is_ghost = True   # missiles must not modify HP; state_sync is authoritative
 
     def __init__(self):
         self.remote_id    = -1         # drone_id as assigned by the opponent
@@ -367,7 +371,7 @@ async def main():
     mp_seq          = 0       # outgoing state-sync sequence number
     mp_last_rx_seq  = -1      # last inbound seq we processed (drop older ones)
     mp_send_timer   = 0.0     # time since last state-sync send
-    MP_SEND_HZ      = 20      # target state-sync rate (messages/sec)
+    MP_SEND_HZ      = 30      # target state-sync rate (messages/sec)
 
     if sys.platform == 'emscripten':
         try:
@@ -797,13 +801,23 @@ async def main():
                                     ec_can_see, d_range)
 
             # Update missiles and remove spent ones
-            # Build world-pos list for explosive splash damage
+            # Build world-pos list for explosive splash damage.
+            # Ghost units are included so explosions render at their position,
+            # but missile.update() skips hp modification for _is_ghost targets.
+            ghost_splash = []
+            if mp_mode and ghost_carrier is not None:
+                ghost_splash = (
+                    [(ghost_carrier, ghost_carrier.x, ghost_carrier.y)] +
+                    [(gd, ghost_carrier.x + gd.offset_x, ghost_carrier.y + gd.offset_y)
+                     for gd in ghost_drones]
+                )
             splash_targets = (
                 [(carrier, carrier.x, carrier.y)] +
                 [(d, carrier.x + d.offset_x, carrier.y + d.offset_y) for d in drones] +
                 [(ec, ec.x, ec.y) for ec in enemy_carriers] +
                 [(d, ec.x + d.offset_x, ec.y + d.offset_y)
-                 for ec, ed in zip(enemy_carriers, enemy_drones_list) for d in ed]
+                 for ec, ed in zip(enemy_carriers, enemy_drones_list) for d in ed] +
+                ghost_splash
             )
             for m in missiles:
                 m.update(dt, splash_targets)

@@ -115,12 +115,18 @@ class Missile:
         dist   = math.hypot(dx, dy)
         move   = cfg.get("MISSILE_SPEED_MM") * dt
         if dist <= move:
-            self.target.hp -= cfg.get("MISSILE_DAMAGE")
+            # Ghost units (remote player) never have HP modified locally —
+            # their HP comes exclusively from network state_sync so it never
+            # flickers back after being reduced.  The fire message already
+            # tells the opponent to apply the damage on their side.
+            if not getattr(self.target, '_is_ghost', False):
+                self.target.hp -= cfg.get("MISSILE_DAMAGE")
             if self.explosive and splash_targets:
                 blast_r  = cfg.get("EXPLOSIVE_BLAST_RADIUS_MM")
                 splash_d = cfg.get("EXPLOSIVE_DAMAGE")
                 for unit, wx, wy in splash_targets:
-                    if unit is not self.target and unit.hp > 0:
+                    is_ghost = getattr(unit, '_is_ghost', False)
+                    if unit is not self.target and unit.hp > 0 and not is_ghost:
                         if math.hypot(wx - tx, wy - ty) <= blast_r:
                             unit.hp -= splash_d
                 self.impact_x = tx
