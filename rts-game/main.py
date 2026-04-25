@@ -38,17 +38,20 @@ class GhostCarrier:
     Has the same attribute interface as EnemyCarrier so Missile can target it."""
 
     def __init__(self, x: float, y: float, max_hp: int = 5):
-        self.x      = float(x)
-        self.y      = float(y)
-        self.vx     = 0.0
-        self.vy     = 0.0
-        self.hp     = float(max_hp)
-        self.max_hp = float(max_hp)
-        self.trail  = []
+        self.x        = float(x)
+        self.y        = float(y)
+        self._srv_x   = float(x)   # last confirmed server position (lerp target)
+        self._srv_y   = float(y)
+        self.vx       = 0.0
+        self.vy       = 0.0
+        self.hp       = float(max_hp)
+        self.max_hp   = float(max_hp)
+        self.trail    = []
 
     def apply_state(self, s: dict) -> None:
-        self.x      = float(s.get("x",      self.x))
-        self.y      = float(s.get("y",      self.y))
+        # Store server-confirmed position as lerp target; don't snap x/y directly
+        self._srv_x = float(s.get("x",      self._srv_x))
+        self._srv_y = float(s.get("y",      self._srv_y))
         self.vx     = float(s.get("vx",     0))
         self.vy     = float(s.get("vy",     0))
         self.hp     = float(s.get("hp",     self.hp))
@@ -361,6 +364,10 @@ async def main():
     ghost_carrier   = None    # GhostCarrier — remote player
     ghost_drones    = []      # list[GhostDrone]
     mp_opponent     = "Opponent"
+    mp_seq          = 0       # outgoing state-sync sequence number
+    mp_last_rx_seq  = -1      # last inbound seq we processed (drop older ones)
+    mp_send_timer   = 0.0     # time since last state-sync send
+    MP_SEND_HZ      = 20      # target state-sync rate (messages/sec)
 
     if sys.platform == 'emscripten':
         try:
@@ -557,17 +564,28 @@ async def main():
         # --- Multiplayer network tick ---
         if mp_mode and game_state == 'playing':
             try:
-                # Dead-reckon ghost carrier between state-sync packets so its
-                # position (and all ghost-drone world positions) stay smooth.
-                # apply_state() below will correct any drift when packets arrive.
+                # Dead-reckon ghost carrier between state-sync packets.
+                # Also advance the server-confirmed target by the same velocity
+                # so the lerp target keeps moving while we wait for the next packet.
+                # Blend toward the target at 10 /s — fast enough to correct within
+                # ~2 frames of a 20 Hz sync but smooth enough to hide any snap.
                 if ghost_carrier is not None:
-                    ghost_carrier.x += ghost_carrier.vx * dt
-                    ghost_carrier.y += ghost_carrier.vy * dt
+                    ghost_carrier.x      += ghost_carrier.vx * dt
+                    ghost_carrier.y      += ghost_carrier.vy * dt
+                    ghost_carrier._srv_x += ghost_carrier.vx * dt
+                    ghost_carrier._srv_y += ghost_carrier.vy * dt
+                    blend = min(1.0, 10.0 * dt)
+                    ghost_carrier.x += (ghost_carrier._srv_x - ghost_carrier.x) * blend
+                    ghost_carrier.y += (ghost_carrier._srv_y - ghost_carrier.y) * blend
 
-                # Process inbound messages
+                # Process inbound messages — drop stale state_syncs via seq
                 for msg in mp.poll():
                     mtype = msg.get("type")
                     if mtype == "game_state":
+                        seq = int(msg.get("seq", 0))
+                        if seq <= mp_last_rx_seq:
+                            continue          # queued-up old packet — skip it
+                        mp_last_rx_seq = seq
                         ghost_carrier.apply_state(msg.get("carrier", {}))
                         ds = msg.get("drones", [])
                         while len(ghost_drones) < len(ds):
@@ -621,10 +639,15 @@ async def main():
                     elif mtype == "opponent_disconnected":
                         game_state = "won"
 
-                # Send local state to opponent every frame
-                if not paused:
+                # Send local state at MP_SEND_HZ (not every frame) to avoid
+                # flooding the relay and queuing up stale packets
+                mp_send_timer += dt
+                if not paused and mp_send_timer >= 1.0 / MP_SEND_HZ:
+                    mp_send_timer = 0.0
+                    mp_seq += 1
                     mp.send({
                         "type":    "game_state",
+                        "seq":     mp_seq,
                         "room_id": mp.room_id,
                         "carrier": {
                             "x": carrier.x, "y": carrier.y,
