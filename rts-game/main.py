@@ -368,8 +368,6 @@ async def main():
     ghost_carrier   = None    # GhostCarrier — remote player
     ghost_drones    = []      # list[GhostDrone]
     mp_opponent     = "Opponent"
-    mp_seq          = 0       # outgoing state-sync sequence number
-    mp_last_rx_seq  = -1      # last inbound seq we processed (drop older ones)
     mp_send_timer   = 0.0     # time since last state-sync send
     MP_SEND_HZ      = 30      # target state-sync rate (messages/sec)
 
@@ -578,18 +576,20 @@ async def main():
                     ghost_carrier.y      += ghost_carrier.vy * dt
                     ghost_carrier._srv_x += ghost_carrier.vx * dt
                     ghost_carrier._srv_y += ghost_carrier.vy * dt
-                    blend = min(1.0, 10.0 * dt)
-                    ghost_carrier.x += (ghost_carrier._srv_x - ghost_carrier.x) * blend
-                    ghost_carrier.y += (ghost_carrier._srv_y - ghost_carrier.y) * blend
+                    err_x = ghost_carrier._srv_x - ghost_carrier.x
+                    err_y = ghost_carrier._srv_y - ghost_carrier.y
+                    if err_x*err_x + err_y*err_y > 400:   # >20 mm: snap
+                        ghost_carrier.x = ghost_carrier._srv_x
+                        ghost_carrier.y = ghost_carrier._srv_y
+                    else:
+                        blend = min(1.0, 25.0 * dt)       # correct in ~3 frames
+                        ghost_carrier.x += err_x * blend
+                        ghost_carrier.y += err_y * blend
 
-                # Process inbound messages — drop stale state_syncs via seq
+                # Process inbound messages (JS already discards stale state_syncs)
                 for msg in mp.poll():
                     mtype = msg.get("type")
                     if mtype == "game_state":
-                        seq = int(msg.get("seq", 0))
-                        if seq <= mp_last_rx_seq:
-                            continue          # queued-up old packet — skip it
-                        mp_last_rx_seq = seq
                         ghost_carrier.apply_state(msg.get("carrier", {}))
                         ds = msg.get("drones", [])
                         while len(ghost_drones) < len(ds):
@@ -648,10 +648,8 @@ async def main():
                 mp_send_timer += dt
                 if not paused and mp_send_timer >= 1.0 / MP_SEND_HZ:
                     mp_send_timer = 0.0
-                    mp_seq += 1
                     mp.send({
                         "type":    "game_state",
-                        "seq":     mp_seq,
                         "room_id": mp.room_id,
                         "carrier": {
                             "x": carrier.x, "y": carrier.y,

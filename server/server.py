@@ -145,6 +145,23 @@ async def handler(ws):
     print(f"[+] {client_id} connected  (total={len(clients)})", flush=True)
     try:
         async for raw in ws:
+            # Fast path: relay high-frequency game messages as raw strings
+            # without JSON decode/re-encode to minimise server processing time.
+            client = clients.get(client_id)
+            if client and client["room"]:
+                # Peek at the type without a full parse — type always appears
+                # near the start of the JSON so this is safe and cheap.
+                if '"game_state"' in raw or '"fire"' in raw:
+                    opp = _opponent_id(client["room"], client_id)
+                    if opp:
+                        c = clients.get(opp)
+                        if c:
+                            try:
+                                await c["ws"].send(raw)
+                            except Exception:
+                                pass
+                    continue   # skip full parse for these hot-path messages
+
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:

@@ -49,7 +49,11 @@ jobs:
              Python can call them via `import js; js.window.mp_*()`.        */
           (function(){
             var params = new URLSearchParams(window.location.search);
-            var inBuf = [], ws = null;
+            /* Only the LATEST game_state is kept — older ones are replaced.
+               Fire / game_over / etc. are all preserved in order.
+               This prevents stale state syncs from queuing up and being
+               processed as a burst, which causes visible position jumps. */
+            var latestState = null, eventBuf = [], ws = null;
             if(params.get('mp') === '1'){
               var serverUrl = params.get('server');
               var roomId    = params.get('room');
@@ -60,14 +64,25 @@ jobs:
                   console.log('[MP] connected, joining room ' + roomId + ' as ' + role);
                   ws.send(JSON.stringify({type:'join_room', room_id:roomId, role:role}));
                 };
-                ws.onmessage = function(e){ inBuf.push(e.data); };
+                ws.onmessage = function(e){
+                  if(e.data.indexOf('"game_state"') !== -1){
+                    latestState = e.data;
+                  } else {
+                    eventBuf.push(e.data);
+                  }
+                };
                 ws.onerror   = function(e){ console.error('[MP] WS error', e); };
                 ws.onclose   = function()  { console.log('[MP] WS closed'); };
               }
             }
             window.mp_ready = function(){ return ws !== null && ws.readyState === 1; };
             window.mp_send  = function(s){ if(ws && ws.readyState === 1) ws.send(s); };
-            window.mp_poll  = function(){ var o = JSON.stringify(inBuf); inBuf = []; return o; };
+            window.mp_poll  = function(){
+              var msgs = [];
+              if(latestState !== null){ msgs.push(latestState); latestState = null; }
+              msgs = msgs.concat(eventBuf); eventBuf = [];
+              return JSON.stringify(msgs);
+            };
             window.mp_close = function(){ if(ws) ws.close(); };
           })();
 
