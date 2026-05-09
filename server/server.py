@@ -116,6 +116,14 @@ async def _handle(client_id: str, data: dict):
               f"(host={game_rooms[room_id]['host']} guest={game_rooms[room_id]['guest']})",
               flush=True)
 
+    # ── WebRTC signalling relay ──────────────────────────────────────────
+    elif t in ("rtc_ready", "rtc_offer", "rtc_answer", "rtc_ice"):
+        room_id = data.get("room_id") or client["room"]
+        if room_id:
+            opp = _opponent_id(room_id, client_id)
+            if opp:
+                await _send(opp, data)
+
     # ── In-game relay ────────────────────────────────────────────────────
     elif t in ("game_state", "fire", "game_over"):
         room_id = client["room"]

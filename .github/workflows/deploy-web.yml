@@ -42,50 +42,8 @@ jobs:
           #pyconsole,#crt,#transfer{display:none!important;}
           canvas{background:#000;}
           </style>
+          <script src="mp.js"></script>
           <script>
-          /* ── Multiplayer WebSocket (pure JS, no pyodide internals needed) ──
-             Reads URL params, connects to the relay server, and exposes
-             mp_ready / mp_send / mp_poll / mp_close on window so that
-             Python can call them via `import js; js.window.mp_*()`.        */
-          (function(){
-            var params = new URLSearchParams(window.location.search);
-            /* Only the LATEST game_state is kept — older ones are replaced.
-               Fire / game_over / etc. are all preserved in order.
-               This prevents stale state syncs from queuing up and being
-               processed as a burst, which causes visible position jumps. */
-            var latestState = null, eventBuf = [], ws = null;
-            if(params.get('mp') === '1'){
-              var serverUrl = params.get('server');
-              var roomId    = params.get('room');
-              var role      = params.get('role');
-              if(serverUrl && roomId && role){
-                ws = new WebSocket(serverUrl);
-                ws.onopen = function(){
-                  console.log('[MP] connected, joining room ' + roomId + ' as ' + role);
-                  ws.send(JSON.stringify({type:'join_room', room_id:roomId, role:role}));
-                };
-                ws.onmessage = function(e){
-                  if(e.data.indexOf('"game_state"') !== -1){
-                    latestState = e.data;
-                  } else {
-                    eventBuf.push(e.data);
-                  }
-                };
-                ws.onerror   = function(e){ console.error('[MP] WS error', e); };
-                ws.onclose   = function()  { console.log('[MP] WS closed'); };
-              }
-            }
-            window.mp_ready = function(){ return ws !== null && ws.readyState === 1; };
-            window.mp_send  = function(s){ if(ws && ws.readyState === 1) ws.send(s); };
-            window.mp_poll  = function(){
-              var msgs = [];
-              if(latestState !== null){ msgs.push(latestState); latestState = null; }
-              msgs = msgs.concat(eventBuf); eventBuf = [];
-              return JSON.stringify(msgs);
-            };
-            window.mp_close = function(){ if(ws) ws.close(); };
-          })();
-
           /* ── Canvas 16:9 centering (MutationObserver) ── */
           (function(){
             var busy = false;
@@ -125,6 +83,9 @@ jobs:
           html = html.replace('</head>', inject + '</head>', 1)
           p.write_text(html, encoding='utf-8')
           PYEOF
+
+      - name: Copy mp.js to web build
+        run: cp rts-game/mp.js rts-game/build/web/mp.js
 
       - name: Copy lobby and inject server URL
         env:
