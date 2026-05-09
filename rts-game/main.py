@@ -93,14 +93,23 @@ class GhostDrone:
         self.remote_id    = -1         # drone_id as assigned by the opponent
         self.offset_x     = 0.0
         self.offset_y     = 0.0
+        # Dead-reckoning: carrier-relative velocity (mirrors Drone.vel_x/vel_y)
+        self.vel_x        = 0.0
+        self.vel_y        = 0.0
+        # Lerp targets: set when state arrives; offset smoothly moves toward them
+        self._tgt_ox      = 0.0
+        self._tgt_oy      = 0.0
         self.hp           = float(cfg.get("DRONE_HP"))
         self.max_hp       = self.hp
         self.missile_type = "normal"
 
     def apply_state(self, s: dict) -> None:
         self.remote_id    = int(s.get("drone_id",       self.remote_id))
-        self.offset_x     = float(s.get("ox",           self.offset_x))
-        self.offset_y     = float(s.get("oy",           self.offset_y))
+        # Store as lerp targets — offset_x/y is advanced by dead reckoning + lerp
+        self._tgt_ox      = float(s.get("ox",           self.offset_x))
+        self._tgt_oy      = float(s.get("oy",           self.offset_y))
+        self.vel_x        = float(s.get("vx",           self.vel_x))
+        self.vel_y        = float(s.get("vy",           self.vel_y))
         self.hp           = float(s.get("hp",           self.hp))
         self.max_hp       = float(s.get("max_hp",       self.max_hp))
         self.missile_type = s.get("missile_type", self.missile_type)
@@ -572,19 +581,37 @@ async def main():
                 # Blend toward the target at 10 /s — fast enough to correct within
                 # ~2 frames of a 20 Hz sync but smooth enough to hide any snap.
                 if ghost_carrier is not None:
+                    # ── Dead-reckon carrier ───────────────────────────────────
                     ghost_carrier.x      += ghost_carrier.vx * dt
                     ghost_carrier.y      += ghost_carrier.vy * dt
                     ghost_carrier._srv_x += ghost_carrier.vx * dt
                     ghost_carrier._srv_y += ghost_carrier.vy * dt
                     err_x = ghost_carrier._srv_x - ghost_carrier.x
                     err_y = ghost_carrier._srv_y - ghost_carrier.y
+                    blend = min(1.0, 25.0 * dt)
                     if err_x*err_x + err_y*err_y > 400:   # >20 mm: snap
                         ghost_carrier.x = ghost_carrier._srv_x
                         ghost_carrier.y = ghost_carrier._srv_y
                     else:
-                        blend = min(1.0, 25.0 * dt)       # correct in ~3 frames
                         ghost_carrier.x += err_x * blend
                         ghost_carrier.y += err_y * blend
+
+                    # ── Dead-reckon each drone's carrier-relative offset ──────
+                    # Drones move continuously; without this they'd snap/teleport
+                    # every 33 ms when the state sync arrives.
+                    for gd in ghost_drones:
+                        gd.offset_x += gd.vel_x * dt
+                        gd.offset_y += gd.vel_y * dt
+                        gd._tgt_ox  += gd.vel_x * dt   # advance lerp target too
+                        gd._tgt_oy  += gd.vel_y * dt
+                        ex = gd._tgt_ox - gd.offset_x
+                        ey = gd._tgt_oy - gd.offset_y
+                        if ex*ex + ey*ey > 400:         # >20 mm: snap
+                            gd.offset_x = gd._tgt_ox
+                            gd.offset_y = gd._tgt_oy
+                        else:
+                            gd.offset_x += ex * blend
+                            gd.offset_y += ey * blend
 
                 # Process inbound messages (JS already discards stale state_syncs)
                 for msg in mp.poll():
@@ -659,6 +686,7 @@ async def main():
                         "drones": [
                             {"drone_id": d.drone_id,
                              "ox": d.offset_x, "oy": d.offset_y,
+                             "vx": d.vel_x,    "vy": d.vel_y,
                              "hp": d.hp, "max_hp": d.max_hp,
                              "missile_type": d.missile_type}
                             for d in drones

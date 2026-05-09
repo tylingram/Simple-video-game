@@ -71,7 +71,7 @@
 
     // Host creates the data channel; guest receives it via ondatachannel.
     if (role === 'host') {
-      setupDC(pc.createDataChannel('game', { ordered: false, maxRetransmits: 0 }));
+      setupDC(pc.createDataChannel('game', { ordered: true }));
     }
     pc.ondatachannel = function (e) { setupDC(e.channel); };
 
