@@ -115,6 +115,15 @@ async def _handle(client_id: str, data: dict):
         print(f"[room {room_id}] {role} joined as {client_id}  "
               f"(host={game_rooms[room_id]['host']} guest={game_rooms[room_id]['guest']})",
               flush=True)
+        # When BOTH players are now in the room, tell them both — no race condition.
+        # The host will create the WebRTC offer on receiving room_ready.
+        h = game_rooms[room_id]["host"]
+        g = game_rooms[room_id]["guest"]
+        if h and g:
+            rr = {"type": "room_ready", "room_id": room_id}
+            await _send(h, rr)
+            await _send(g, rr)
+            print(f"[room {room_id}] both players present — sent room_ready", flush=True)
 
     # ── WebRTC signalling relay ──────────────────────────────────────────
     elif t in ("rtc_ready", "rtc_offer", "rtc_answer", "rtc_ice"):

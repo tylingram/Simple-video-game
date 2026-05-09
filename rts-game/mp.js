@@ -1,6 +1,11 @@
 // Island RTS — Multiplayer transport layer
 // Tries WebRTC peer-to-peer first; falls back to WebSocket relay.
 // Exposes window.mp_ready / mp_send / mp_poll / mp_close for Python.
+//
+// WebRTC handshake (race-free):
+//   Both players call join_room on connect.
+//   Server sends room_ready to BOTH once both are present.
+//   Host creates offer on room_ready; guest waits for rtc_offer.
 (function () {
   var params = new URLSearchParams(window.location.search);
   if (params.get('mp') !== '1') {
@@ -36,10 +41,24 @@
 
   function setupDC(channel) {
     dc = channel;
-    dc.onopen    = function () { console.log('[MP] WebRTC data channel open'); };
+    dc.onopen    = function () { console.log('[MP] WebRTC data channel open — P2P active'); };
     dc.onmessage = function (e) { handleGameData(e.data); };
     dc.onerror   = function (e) { console.error('[MP] DC error', e); };
     dc.onclose   = function ()  { console.log('[MP] DC closed'); dc = null; };
+  }
+
+  function createOffer() {
+    if (!pc) return;
+    pc.createOffer()
+      .then(function (offer) { return pc.setLocalDescription(offer); })
+      .then(function () {
+        ws.send(JSON.stringify({
+          type: 'rtc_offer', room_id: roomId,
+          sdp: pc.localDescription.sdp
+        }));
+        console.log('[MP] sent rtc_offer');
+      })
+      .catch(function (err) { console.error('[MP] offer error:', err); });
   }
 
   try {
@@ -52,7 +71,7 @@
 
     // Host creates the data channel; guest receives it via ondatachannel.
     if (role === 'host') {
-      setupDC(pc.createDataChannel('game', { ordered: true }));
+      setupDC(pc.createDataChannel('game', { ordered: false, maxRetransmits: 0 }));
     }
     pc.ondatachannel = function (e) { setupDC(e.channel); };
 
@@ -79,11 +98,11 @@
   var ws = new WebSocket(serverUrl);
 
   ws.onopen = function () {
+    // Join the game room. Server will send room_ready to both players once
+    // both have joined — this eliminates the race condition where rtc_ready
+    // could arrive before the opponent's join_room was processed.
     ws.send(JSON.stringify({ type: 'join_room', room_id: roomId, role: role }));
-    // Guest announces readiness so host knows when to create the offer.
-    if (role === 'guest' && pc) {
-      ws.send(JSON.stringify({ type: 'rtc_ready', room_id: roomId }));
-    }
+    console.log('[MP] joined room ' + roomId + ' as ' + role);
   };
 
   ws.onmessage = function (e) {
@@ -95,17 +114,13 @@
 
     var t = msg.type;
 
-    if (t === 'rtc_ready' && role === 'host' && pc) {
-      // Guest is connected — create and send offer.
-      pc.createOffer()
-        .then(function (offer) { return pc.setLocalDescription(offer); })
-        .then(function () {
-          ws.send(JSON.stringify({
-            type: 'rtc_offer', room_id: roomId,
-            sdp: pc.localDescription.sdp
-          }));
-        })
-        .catch(function (err) { console.error('[MP] offer error:', err); });
+    if (t === 'room_ready') {
+      // Server confirmed both players are present. Host starts the WebRTC offer.
+      console.log('[MP] room_ready received, role=' + role);
+      if (role === 'host' && pc) {
+        createOffer();
+      }
+      // Guest just waits for the rtc_offer from the host.
 
     } else if (t === 'rtc_offer' && pc) {
       pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp })
@@ -116,6 +131,7 @@
             type: 'rtc_answer', room_id: roomId,
             sdp: pc.localDescription.sdp
           }));
+          console.log('[MP] sent rtc_answer');
         })
         .catch(function (err) { console.error('[MP] answer error:', err); });
 
