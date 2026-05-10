@@ -150,18 +150,34 @@ def make_screen(fullscreen):
         )
 
 
+_dotted_circle_cache: dict = {}   # (radius_px, color, n_dashes, width) → Surface
+
+
 def draw_dotted_circle(surface, color, cx, cy, radius_px, n_dashes=56, width=1):
-    """Draw a dashed circle using short arc segments."""
+    """Draw a dashed circle using short arc segments.
+
+    The circle is rendered once into a cached SRCALPHA surface keyed by
+    (radius, color, style); subsequent calls are a single blit — no arc
+    draws at all after the first call with a given radius/color combo.
+    """
     if radius_px <= 0:
         return
-    rect      = pygame.Rect(cx - radius_px, cy - radius_px,
-                             radius_px * 2,  radius_px * 2)
-    dash_fill = 0.45   # fraction of each slot that is drawn — open/airy gaps
-    for i in range(n_dashes):
-        if i % 2 == 0:
-            a1 = 2 * math.pi * i          / n_dashes
-            a2 = 2 * math.pi * (i + dash_fill) / n_dashes
-            pygame.draw.arc(surface, color, rect, a1, a2, width)
+    cache_key = (radius_px, color, n_dashes, width)
+    cached = _dotted_circle_cache.get(cache_key)
+    if cached is None:
+        pad  = width + 2
+        size = radius_px * 2 + pad * 2
+        cached = pygame.Surface((size, size), pygame.SRCALPHA)
+        rect = pygame.Rect(pad, pad, radius_px * 2, radius_px * 2)
+        dash_fill = 0.45
+        for i in range(n_dashes):
+            if i % 2 == 0:
+                a1 = 2 * math.pi * i              / n_dashes
+                a2 = 2 * math.pi * (i + dash_fill) / n_dashes
+                pygame.draw.arc(cached, color, rect, a1, a2, width)
+        _dotted_circle_cache[cache_key] = cached
+    pad = width + 2
+    surface.blit(cached, (cx - radius_px - pad, cy - radius_px - pad))
 
 
 def launch_config_editor():
@@ -378,7 +394,7 @@ async def main():
     ghost_drones    = []      # list[GhostDrone]
     mp_opponent     = "Opponent"
     mp_send_timer   = 0.0     # time since last state-sync send
-    MP_SEND_HZ      = 30      # target state-sync rate (messages/sec)
+    MP_SEND_HZ      = 20      # target state-sync rate — dead reckoning covers gaps
 
     if sys.platform == 'emscripten':
         try:
