@@ -134,7 +134,7 @@ async def _handle(client_id: str, data: dict):
                 await _send(opp, data)
 
     # ── In-game relay ────────────────────────────────────────────────────
-    elif t in ("game_state", "fire", "game_over"):
+    elif t in ("input", "drone_cmd", "game_state", "fire", "game_over"):
         room_id = client["room"]
         if room_id:
             opp = _opponent_id(room_id, client_id)
@@ -168,7 +168,7 @@ async def handler(ws):
             if client and client["room"]:
                 # Peek at the type without a full parse — type always appears
                 # near the start of the JSON so this is safe and cheap.
-                if '"game_state"' in raw or '"fire"' in raw:
+                if '"input"' in raw or '"fire"' in raw or '"drone_cmd"' in raw:
                     opp = _opponent_id(client["room"], client_id)
                     if opp:
                         c = clients.get(opp)

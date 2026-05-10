@@ -34,30 +34,65 @@ def _ghost_font(size: int):
 
 
 class GhostCarrier:
-    """Remote player's carrier — position/HP updated from network state each frame.
-    Has the same attribute interface as EnemyCarrier so Missile can target it."""
+    """Remote player's carrier — driven by received input state + local physics.
 
-    _is_ghost = True   # missiles must not modify HP; state_sync is authoritative
+    Instead of interpolating received positions (dead-reckoning), we run the
+    SAME physics as Carrier.update() using the opponent's WASD key state.
+    Both simulations stay in sync because they run identical code with
+    identical inputs.  A soft position correction from each input packet
+    fixes any tiny floating-point drift.
+    """
+
+    _is_ghost = True   # missiles must not modify HP — HP comes from correction pkts
 
     def __init__(self, x: float, y: float, max_hp: int = 5):
-        self.x        = float(x)
-        self.y        = float(y)
-        self._srv_x   = float(x)   # last confirmed server position (lerp target)
-        self._srv_y   = float(y)
-        self.vx       = 0.0
-        self.vy       = 0.0
-        self.hp       = float(max_hp)
-        self.max_hp   = float(max_hp)
-        self.trail    = []
+        self.x      = float(x)
+        self.y      = float(y)
+        self.vx     = 0.0
+        self.vy     = 0.0
+        self.hp     = float(max_hp)
+        self.max_hp = float(max_hp)
+        self.trail  = []
+        self._keys  = {'w': 0, 'a': 0, 's': 0, 'd': 0}  # last received key state
 
-    def apply_state(self, s: dict) -> None:
-        # Store server-confirmed position as lerp target; don't snap x/y directly
-        self._srv_x = float(s.get("x",      self._srv_x))
-        self._srv_y = float(s.get("y",      self._srv_y))
-        self.vx     = float(s.get("vx",     0))
-        self.vy     = float(s.get("vy",     0))
-        self.hp     = float(s.get("hp",     self.hp))
-        self.max_hp = float(s.get("max_hp", self.max_hp))
+    def apply_input(self, keys: dict, correction: dict) -> None:
+        """Update key state and apply a soft position correction."""
+        self._keys = keys
+        cx  = float(correction.get('x',  self.x))
+        cy  = float(correction.get('y',  self.y))
+        err = math.hypot(cx - self.x, cy - self.y)
+        if err > 40:          # severe drift — snap (should almost never happen)
+            self.x, self.y = cx, cy
+        elif err > 0.5:       # tiny floating-point drift — nudge 20% toward truth
+            self.x += (cx - self.x) * 0.2
+            self.y += (cy - self.y) * 0.2
+        self.vx     = float(correction.get('vx',     self.vx))
+        self.vy     = float(correction.get('vy',     self.vy))
+        self.hp     = float(correction.get('hp',     self.hp))
+        self.max_hp = float(correction.get('max_hp', self.max_hp))
+
+    def update_sim(self, dt: float) -> None:
+        """One physics frame — identical logic to Carrier.update() minus key polling."""
+        accel     = cfg.get("CARRIER_ACCELERATION")
+        top_speed = cfg.get("CARRIER_TOP_SPEED")
+        dx = int(self._keys.get('d', 0)) - int(self._keys.get('a', 0))
+        dy = int(self._keys.get('s', 0)) - int(self._keys.get('w', 0))
+
+        def _axis(v, d):
+            if d:
+                v += d * accel * dt
+                return max(-top_speed, min(top_speed, v))
+            step = accel * dt
+            return 0.0 if abs(v) <= step else v - math.copysign(step, v)
+
+        self.vx = _axis(self.vx, dx)
+        self.vy = _axis(self.vy, dy)
+        spd = math.hypot(self.vx, self.vy)
+        if spd > top_speed:
+            self.vx = self.vx / spd * top_speed
+            self.vy = self.vy / spd * top_speed
+        self.x += self.vx * dt
+        self.y += self.vy * dt
 
     def draw(self, surface, camera_x_mm, camera_y_mm, game_h, px):
         w  = max(1, int(cfg.get("CARRIER_WIDTH_MM")  * px))
@@ -83,42 +118,53 @@ class GhostCarrier:
 
 
 class GhostDrone:
-    """Remote player's drone — updated from network state.
-    Has the same attribute interface as Drone so Missile can target it.
-    draw_world is inherited from Drone at class definition time."""
+    """Remote player's drone — driven by received commands + local physics.
 
-    _is_ghost = True   # missiles must not modify HP; state_sync is authoritative
+    We run the SAME arrive-steering as Drone.update() using the opponent's
+    commanded target (received via drone_cmd packets).  Each 'input' packet
+    also carries a soft position correction to eliminate any float drift.
+    """
+
+    _is_ghost = True   # missiles must not modify HP
 
     def __init__(self):
-        self.remote_id    = -1         # drone_id as assigned by the opponent
+        self.remote_id    = -1      # drone_id as assigned by the opponent
         self.offset_x     = 0.0
         self.offset_y     = 0.0
-        # Dead-reckoning: carrier-relative velocity (mirrors Drone.vel_x/vel_y)
+        self.target_x     = 0.0
+        self.target_y     = 0.0
         self.vel_x        = 0.0
         self.vel_y        = 0.0
-        # Lerp targets: set when state arrives; offset smoothly moves toward them
-        self._tgt_ox      = 0.0
-        self._tgt_oy      = 0.0
         self.hp           = float(cfg.get("DRONE_HP"))
         self.max_hp       = self.hp
         self.missile_type = "normal"
+        self.selected     = False   # unused; present for draw_world compat
 
-    def apply_state(self, s: dict) -> None:
-        self.remote_id    = int(s.get("drone_id",       self.remote_id))
-        # Store as lerp targets — offset_x/y is advanced by dead reckoning + lerp
-        self._tgt_ox      = float(s.get("ox",           self.offset_x))
-        self._tgt_oy      = float(s.get("oy",           self.offset_y))
-        self.vel_x        = float(s.get("vx",           self.vel_x))
-        self.vel_y        = float(s.get("vy",           self.vel_y))
-        self.hp           = float(s.get("hp",           self.hp))
-        self.max_hp       = float(s.get("max_hp",       self.max_hp))
-        self.missile_type = s.get("missile_type", self.missile_type)
-
-    # Borrow draw methods from Drone — GhostDrone has all the attrs they need
+    # Borrow arrive-steering + draw from Drone (all required attrs are above)
     from units.drone import Drone as _D
-    draw_world = _D.draw_world   # calls self._draw_hp internally
+    update     = _D.update
+    set_target = _D.set_target
+    draw_world = _D.draw_world
     _draw_hp   = _D._draw_hp
     del _D
+
+    def apply_correction(self, s: dict) -> None:
+        """Soft-correct position from the correction embedded in each 'input' packet."""
+        self.remote_id = int(s.get("id", self.remote_id))
+        ox  = float(s.get("ox", self.offset_x))
+        oy  = float(s.get("oy", self.offset_y))
+        err = math.hypot(ox - self.offset_x, oy - self.offset_y)
+        if err > 20:                      # >20 mm — snap
+            self.offset_x, self.offset_y = ox, oy
+        elif err > 0.5:                   # tiny drift — nudge 20 %
+            self.offset_x += (ox - self.offset_x) * 0.2
+            self.offset_y += (oy - self.offset_y) * 0.2
+        self.hp           = float(s.get("hp",     self.hp))
+        self.max_hp       = float(s.get("max_hp", self.max_hp))
+        self.missile_type = s.get("mt", self.missile_type)
+        if "tx" in s:
+            self.target_x = float(s["tx"])
+            self.target_y = float(s.get("ty", self.target_y))
 
 
 PLAYER_ATTACK_COLOR     = (50, 185, 100)   # vivid muted green — player attack range
@@ -587,59 +633,52 @@ async def main():
                             ox = (mx - settings.SCREEN_WIDTH // 2) / px_per_mm
                             oy = (my - game_h               // 2) / px_per_mm
                             sel.set_target(ox, oy)
+                            if mp_mode:
+                                mp.send({
+                                    "type":     "drone_cmd",
+                                    "room_id":  mp.room_id,
+                                    "drone_id": sel.drone_id,
+                                    "tx":       sel.target_x,
+                                    "ty":       sel.target_y,
+                                })
 
         # --- Multiplayer network tick ---
         if mp_mode and game_state == 'playing':
             try:
-                # Dead-reckon ghost carrier between state-sync packets.
-                # Also advance the server-confirmed target by the same velocity
-                # so the lerp target keeps moving while we wait for the next packet.
-                # Blend toward the target at 10 /s — fast enough to correct within
-                # ~2 frames of a 20 Hz sync but smooth enough to hide any snap.
+                # ── Advance ghost simulation locally ────────────────────────────
+                # Same physics code as the real units — no interpolation needed.
+                # The ghost runs forward each frame using the last-known key state;
+                # incoming 'input' packets update keys + apply a soft correction.
                 if ghost_carrier is not None:
-                    # ── Dead-reckon carrier ───────────────────────────────────
-                    ghost_carrier.x      += ghost_carrier.vx * dt
-                    ghost_carrier.y      += ghost_carrier.vy * dt
-                    ghost_carrier._srv_x += ghost_carrier.vx * dt
-                    ghost_carrier._srv_y += ghost_carrier.vy * dt
-                    err_x = ghost_carrier._srv_x - ghost_carrier.x
-                    err_y = ghost_carrier._srv_y - ghost_carrier.y
-                    blend = min(1.0, 25.0 * dt)
-                    if err_x*err_x + err_y*err_y > 400:   # >20 mm: snap
-                        ghost_carrier.x = ghost_carrier._srv_x
-                        ghost_carrier.y = ghost_carrier._srv_y
-                    else:
-                        ghost_carrier.x += err_x * blend
-                        ghost_carrier.y += err_y * blend
-
-                    # ── Dead-reckon each drone's carrier-relative offset ──────
-                    # Drones move continuously; without this they'd snap/teleport
-                    # every 33 ms when the state sync arrives.
+                    ghost_carrier.update_sim(dt)
                     for gd in ghost_drones:
-                        gd.offset_x += gd.vel_x * dt
-                        gd.offset_y += gd.vel_y * dt
-                        gd._tgt_ox  += gd.vel_x * dt   # advance lerp target too
-                        gd._tgt_oy  += gd.vel_y * dt
-                        ex = gd._tgt_ox - gd.offset_x
-                        ey = gd._tgt_oy - gd.offset_y
-                        if ex*ex + ey*ey > 400:         # >20 mm: snap
-                            gd.offset_x = gd._tgt_ox
-                            gd.offset_y = gd._tgt_oy
-                        else:
-                            gd.offset_x += ex * blend
-                            gd.offset_y += ey * blend
+                        gd.update(dt, ghost_carrier.vx, ghost_carrier.vy)
 
-                # Process inbound messages (JS already discards stale state_syncs)
+                # ── Process inbound messages ────────────────────────────────────
                 for msg in mp.poll():
                     mtype = msg.get("type")
-                    if mtype == "game_state":
-                        ghost_carrier.apply_state(msg.get("carrier", {}))
+
+                    if mtype == "input":
+                        # Key state + soft position correction (sent at ~20 Hz)
+                        ghost_carrier.apply_input(
+                            msg.get("keys", {}), msg.get("c", {}))
                         ds = msg.get("drones", [])
                         while len(ghost_drones) < len(ds):
                             ghost_drones.append(GhostDrone())
                         del ghost_drones[len(ds):]
                         for gd, gs in zip(ghost_drones, ds):
-                            gd.apply_state(gs)
+                            gd.apply_correction(gs)
+
+                    elif mtype == "drone_cmd":
+                        # Opponent moved a drone — update its target so our local
+                        # physics sim steers it toward the correct destination
+                        did = int(msg.get("drone_id", -1))
+                        gd  = next((g for g in ghost_drones
+                                    if g.remote_id == did), None)
+                        if gd is not None:
+                            gd.set_target(float(msg.get("tx", 0.0)),
+                                          float(msg.get("ty", 0.0)))
+
                     elif mtype == "fire":
                         tt         = msg.get("target_type", "carrier")
                         target_id  = int(msg.get("target_id", -1))
@@ -655,10 +694,8 @@ async def main():
                             target, cref = (tgt_drone, carrier) if tgt_drone else (carrier, None)
                         else:
                             target, cref = carrier, None
-                        # Origin missile at ghost's current LOCAL position so it
-                        # can never visually travel beyond the attack range circle
+                        # Origin missile at ghost's current local position
                         if shooter_id == -1:
-                            # Carrier shot
                             fx_local  = ghost_carrier.x
                             fy_local  = ghost_carrier.y
                             max_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
@@ -679,32 +716,38 @@ async def main():
                             missiles.append(Missile(fx_local, fy_local, target, cref,
                                                     "enemy", explosive=expl,
                                                     max_range=max_range))
+
                     elif mtype == "game_over":
-                        # Opponent's carrier died — we won (only if still playing)
                         if game_state == 'playing':
                             game_state = "won"
                     elif mtype == "opponent_disconnected":
                         game_state = "won"
 
-                # Send local state at MP_SEND_HZ (not every frame) to avoid
-                # flooding the relay and queuing up stale packets
+                # ── Send local input state at MP_SEND_HZ ───────────────────────
                 mp_send_timer += dt
                 if not paused and mp_send_timer >= 1.0 / MP_SEND_HZ:
                     mp_send_timer = 0.0
+                    _ks = pygame.key.get_pressed()
                     mp.send({
-                        "type":    "game_state",
+                        "type":    "input",
                         "room_id": mp.room_id,
-                        "carrier": {
-                            "x": carrier.x, "y": carrier.y,
-                            "vx": carrier.vx, "vy": carrier.vy,
-                            "hp": carrier.hp, "max_hp": carrier.max_hp,
+                        "keys": {
+                            "w": int(_ks[pygame.K_w]),
+                            "a": int(_ks[pygame.K_a]),
+                            "s": int(_ks[pygame.K_s]),
+                            "d": int(_ks[pygame.K_d]),
+                        },
+                        "c": {
+                            "x":      carrier.x,   "y":      carrier.y,
+                            "vx":     carrier.vx,  "vy":     carrier.vy,
+                            "hp":     carrier.hp,  "max_hp": carrier.max_hp,
                         },
                         "drones": [
-                            {"drone_id": d.drone_id,
+                            {"id": d.drone_id,
                              "ox": d.offset_x, "oy": d.offset_y,
-                             "vx": d.vel_x,    "vy": d.vel_y,
+                             "tx": d.target_x, "ty": d.target_y,
                              "hp": d.hp, "max_hp": d.max_hp,
-                             "missile_type": d.missile_type}
+                             "mt": d.missile_type}
                             for d in drones
                         ],
                     })

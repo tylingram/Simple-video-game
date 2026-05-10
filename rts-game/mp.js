@@ -28,8 +28,8 @@
   var eventBuf    = [];
 
   function handleGameData(raw) {
-    if (raw.indexOf('"game_state"') !== -1) {
-      latestState = raw;      // replace — never queue stale state syncs
+    if (raw.indexOf('"input"') !== -1) {
+      latestState = raw;      // replace — never queue stale input syncs
     } else {
       eventBuf.push(raw);
     }
