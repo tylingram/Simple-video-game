@@ -22,8 +22,10 @@ MAX_RADIUS_COLOR        = (90,  90, 125)   # grey-blue  — max drone roam radiu
 
 # ── Multiplayer ghost objects ─────────────────────────────────────────────────
 
-_GHOST_CARRIER_COLOR  = (210,  45,  45)
-_GHOST_CARRIER_BORDER = (255, 120, 120)
+_GHOST_ENEMY_COLOR    = (210,  45,  45)
+_GHOST_ENEMY_BORDER   = (255, 120, 120)
+_GHOST_ALLY_COLOR     = ( 45,  45, 210)   # blue — same-team partner
+_GHOST_ALLY_BORDER    = (120, 120, 255)
 _ghost_font_cache: dict = {}
 
 
@@ -45,15 +47,17 @@ class GhostCarrier:
 
     _is_ghost = True   # missiles must not modify HP — HP comes from correction pkts
 
-    def __init__(self, x: float, y: float, max_hp: int = 5):
-        self.x      = float(x)
-        self.y      = float(y)
-        self.vx     = 0.0
-        self.vy     = 0.0
-        self.hp     = float(max_hp)
-        self.max_hp = float(max_hp)
-        self.trail  = []
-        self._keys  = {'w': 0, 'a': 0, 's': 0, 'd': 0}  # last received key state
+    def __init__(self, x: float, y: float, max_hp: int = 5, is_ally: bool = False):
+        self.x        = float(x)
+        self.y        = float(y)
+        self.vx       = 0.0
+        self.vy       = 0.0
+        self.hp       = float(max_hp)
+        self.max_hp   = float(max_hp)
+        self.trail    = []
+        self._keys    = {'w': 0, 'a': 0, 's': 0, 'd': 0}  # last received key state
+        self._color   = _GHOST_ALLY_COLOR  if is_ally else _GHOST_ENEMY_COLOR
+        self._border  = _GHOST_ALLY_BORDER if is_ally else _GHOST_ENEMY_BORDER
 
     def apply_input(self, keys: dict, correction: dict) -> None:
         """Update key state and apply a soft position correction."""
@@ -101,8 +105,8 @@ class GhostCarrier:
         sy = int((self.y - camera_y_mm) * px)
         if (-w <= sx < settings.SCREEN_WIDTH + w and -h <= sy < game_h + h):
             rect = pygame.Rect(sx - w // 2, sy - h // 2, w, h)
-            pygame.draw.rect(surface, _GHOST_CARRIER_COLOR,  rect)
-            pygame.draw.rect(surface, _GHOST_CARRIER_BORDER, rect, 1)
+            pygame.draw.rect(surface, self._color,  rect)
+            pygame.draw.rect(surface, self._border, rect, 1)
             font = _ghost_font(max(8, min(w, h) - 4))
             txt  = font.render(str(max(0, int(self.hp))), True, (255, 255, 255))
             surface.blit(txt, txt.get_rect(center=(sx, sy)))
@@ -434,13 +438,17 @@ async def main():
     carrier  = Carrier()
 
     # ── Detect multiplayer mode (web only) ─────────────────────────────────────
-    mp_mode         = False
-    mp              = None    # multiplayer module reference
-    ghost_carrier   = None    # GhostCarrier — remote player
-    ghost_drones    = []      # list[GhostDrone]
-    mp_opponent     = "Opponent"
-    mp_send_timer   = 0.0     # time since last state-sync send
-    MP_SEND_HZ      = 20      # target state-sync rate — dead reckoning covers gaps
+    mp_mode          = False
+    mp               = None    # multiplayer module reference
+    # mp_others: role → {"carrier": GhostCarrier, "drones": [GhostDrone], "enemy": bool}
+    mp_others        = {}
+    mp_role          = ""      # local player's role
+    mp_2v2           = False   # True for 2v2 match
+    mp_opponent      = "Opponent"
+    mp_send_timer    = 0.0
+    mp_enemy_deaths  = 0       # how many enemy carriers have been eliminated (2v2)
+    mp_enemies_needed = 1      # 1 for 1v1, 2 for 2v2
+    MP_SEND_HZ       = 20
 
     if sys.platform == 'emscripten':
         try:
@@ -455,38 +463,58 @@ async def main():
                     mp_role     = params.get('role',     ['host'])[0]
                     mp_server   = params.get('server',   [''])[0]
                     mp_opponent = params.get('opponent', ['Opponent'])[0]
+                    mp_ally     = params.get('ally',     [''])[0]
+                    mp_2v2      = mp_role.startswith('t1') or mp_role.startswith('t2')
+                    if mp_2v2:
+                        mp_enemy_deaths  = 0
+                        mp_enemies_needed = 2
         except Exception as e:
             print(f"MP param parse error: {e}")
 
     if mp_mode:
         import multiplayer as mp
-        mp.setup(mp_server, mp_room, mp_role, mp_opponent)
+        mp.setup(mp_server, mp_room, mp_role, mp_opponent,
+                 r_mode="2v2" if mp_2v2 else "1v1",
+                 ally=mp_ally if mp_2v2 else "")
         # Wait up to 4 s for WS handshake
         for _ in range(120):
             await asyncio.sleep(0.033)
             if mp.is_ready():
                 break
-        # join_room is sent automatically by the JS WebSocket onopen handler
 
     # Spawn player + enemies at the island edge, spaced by drone max radius
     if mp_mode:
-        # Seed random from room_id so both players generate the identical island
+        # Seed random from room_id so all players generate the identical island
         import random as _rng
         _seed = int.from_bytes(mp_room.encode(), 'big') % (2 ** 31)
         _rng.seed(_seed)
         game_map.reset()
         ponds.reset()
         fog.reset()
-        # In multiplayer: 2 spawn points — host gets [0], guest gets [1]
-        spawn = game_map.edge_spawn_points(2, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
-        if mp_role == 'host':
-            carrier.x, carrier.y = spawn[0]
-            gx, gy = spawn[1]
-        else:
-            carrier.x, carrier.y = spawn[1]
-            gx, gy = spawn[0]
-        ghost_carrier = GhostCarrier(gx, gy, max_hp=int(cfg.get("CARRIER_HP")))
-        ghost_drones  = [GhostDrone() for _ in range(int(cfg.get("STARTING_DRONES")))]
+        # Spawn index per role: 1v1 uses slots 0-1; 2v2 uses slots 0-3.
+        _role_idx = {"host": 0, "guest": 1,
+                     "t1p1": 0, "t1p2": 1, "t2p1": 2, "t2p2": 3}
+        n_spawns = 4 if mp_2v2 else 2
+        spawn = game_map.edge_spawn_points(n_spawns, cfg.get("DRONE_MAX_RADIUS_MM"), ponds)
+        carrier.x, carrier.y = spawn[_role_idx.get(mp_role, 0)]
+        # Create ghost carriers/drones for every other player
+        _other_roles = (
+            [r for r in ("t1p1", "t1p2", "t2p1", "t2p2") if r != mp_role]
+            if mp_2v2 else
+            (["guest"] if mp_role == "host" else ["host"])
+        )
+        for _r in _other_roles:
+            _idx     = _role_idx[_r]
+            _gx, _gy = spawn[_idx]
+            _is_ally = mp_2v2 and (_r[:2] == mp_role[:2])
+            _gc      = GhostCarrier(_gx, _gy,
+                                    max_hp=int(cfg.get("CARRIER_HP")),
+                                    is_ally=_is_ally)
+            mp_others[_r] = {
+                "carrier": _gc,
+                "drones":  [GhostDrone() for _ in range(int(cfg.get("STARTING_DRONES")))],
+                "enemy":   not _is_ally,
+            }
         enemy_carriers    = []
         enemy_drones_list = []
     else:
@@ -636,6 +664,7 @@ async def main():
                             if mp_mode:
                                 mp.send({
                                     "type":     "drone_cmd",
+                                    "from":     mp_role,
                                     "room_id":  mp.room_id,
                                     "drone_id": sel.drone_id,
                                     "tx":       sel.target_x,
@@ -645,81 +674,88 @@ async def main():
         # --- Multiplayer network tick ---
         if mp_mode and game_state == 'playing':
             try:
-                # ── Advance ghost simulation locally ────────────────────────────
-                # Same physics code as the real units — no interpolation needed.
-                # The ghost runs forward each frame using the last-known key state;
-                # incoming 'input' packets update keys + apply a soft correction.
-                if ghost_carrier is not None:
-                    ghost_carrier.update_sim(dt)
-                    for gd in ghost_drones:
-                        gd.update(dt, ghost_carrier.vx, ghost_carrier.vy)
+                # ── Advance every ghost locally (same physics as real units) ────
+                for _other in mp_others.values():
+                    _gc = _other["carrier"]
+                    _gc.update_sim(dt)
+                    for _gd in _other["drones"]:
+                        _gd.update(dt, _gc.vx, _gc.vy)
 
                 # ── Process inbound messages ────────────────────────────────────
                 for msg in mp.poll():
-                    mtype = msg.get("type")
+                    mtype     = msg.get("type")
+                    from_role = msg.get("from", "")
+                    _other    = mp_others.get(from_role)
 
-                    if mtype == "input":
-                        # Key state + soft position correction (sent at ~20 Hz)
-                        ghost_carrier.apply_input(
+                    if mtype == "input" and _other:
+                        _other["carrier"].apply_input(
                             msg.get("keys", {}), msg.get("c", {}))
                         ds = msg.get("drones", [])
-                        while len(ghost_drones) < len(ds):
-                            ghost_drones.append(GhostDrone())
-                        del ghost_drones[len(ds):]
-                        for gd, gs in zip(ghost_drones, ds):
-                            gd.apply_correction(gs)
+                        while len(_other["drones"]) < len(ds):
+                            _other["drones"].append(GhostDrone())
+                        del _other["drones"][len(ds):]
+                        for _gd, _gs in zip(_other["drones"], ds):
+                            _gd.apply_correction(_gs)
 
-                    elif mtype == "drone_cmd":
-                        # Opponent moved a drone — update its target so our local
-                        # physics sim steers it toward the correct destination
-                        did = int(msg.get("drone_id", -1))
-                        gd  = next((g for g in ghost_drones
-                                    if g.remote_id == did), None)
-                        if gd is not None:
-                            gd.set_target(float(msg.get("tx", 0.0)),
-                                          float(msg.get("ty", 0.0)))
+                    elif mtype == "drone_cmd" and _other:
+                        _did = int(msg.get("drone_id", -1))
+                        _gd  = next((g for g in _other["drones"]
+                                     if g.remote_id == _did), None)
+                        if _gd is not None:
+                            _gd.set_target(float(msg.get("tx", 0.0)),
+                                           float(msg.get("ty", 0.0)))
 
                     elif mtype == "fire":
+                        # In 2v2 only process fires aimed at ME
+                        target_player = msg.get("target_player", None)
+                        if target_player is not None and target_player != mp_role:
+                            continue
                         tt         = msg.get("target_type", "carrier")
                         target_id  = int(msg.get("target_id", -1))
                         shooter_id = int(msg.get("shooter_id", -1))
                         expl       = msg.get("explosive", False)
-                        # Find the local unit being targeted
                         if tt == "drone":
-                            tgt_drone = next(
-                                (d for d in drones
-                                 if d.drone_id == target_id and d.hp > 0),
-                                None
-                            )
-                            target, cref = (tgt_drone, carrier) if tgt_drone else (carrier, None)
+                            _td = next((d for d in drones
+                                        if d.drone_id == target_id and d.hp > 0), None)
+                            target, cref = (_td, carrier) if _td else (carrier, None)
                         else:
                             target, cref = carrier, None
-                        # Origin missile at ghost's current local position
-                        if shooter_id == -1:
-                            fx_local  = ghost_carrier.x
-                            fy_local  = ghost_carrier.y
-                            max_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
-                        else:
-                            gshooter = next(
-                                (gd for gd in ghost_drones
-                                 if gd.remote_id == shooter_id),
-                                None
-                            )
-                            if gshooter:
-                                fx_local = ghost_carrier.x + gshooter.offset_x
-                                fy_local = ghost_carrier.y + gshooter.offset_y
+                        # Locate the shooter ghost carrier
+                        _sg = _other or (list(mp_others.values())[0] if mp_others else None)
+                        if _sg:
+                            _sgc = _sg["carrier"]
+                            if shooter_id == -1:
+                                fx_local  = _sgc.x
+                                fy_local  = _sgc.y
+                                max_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
                             else:
-                                fx_local = ghost_carrier.x
-                                fy_local = ghost_carrier.y
-                            max_range = cfg.get("DRONE_ATTACK_RANGE_MM")
+                                _sd = next((g for g in _sg["drones"]
+                                            if g.remote_id == shooter_id), None)
+                                fx_local  = _sgc.x + (_sd.offset_x if _sd else 0)
+                                fy_local  = _sgc.y + (_sd.offset_y if _sd else 0)
+                                max_range = cfg.get("DRONE_ATTACK_RANGE_MM")
+                        else:
+                            fx_local, fy_local = carrier.x, carrier.y
+                            max_range = cfg.get("CARRIER_ATTACK_RANGE_MM")
                         if target.hp > 0:
                             missiles.append(Missile(fx_local, fy_local, target, cref,
                                                     "enemy", explosive=expl,
                                                     max_range=max_range))
 
                     elif mtype == "game_over":
-                        if game_state == 'playing':
-                            game_state = "won"
+                        _from_role = msg.get("from", "")
+                        if _from_role and mp_2v2:
+                            if _from_role[:2] != mp_role[:2]:   # enemy carrier died
+                                mp_enemy_deaths += 1
+                                if (mp_enemy_deaths >= mp_enemies_needed
+                                        and game_state == 'playing'):
+                                    game_state = "won"
+                            # ally death: we keep fighting
+                        else:
+                            # 1v1 (or legacy packet without "from")
+                            if game_state == 'playing':
+                                game_state = "won"
+
                     elif mtype == "opponent_disconnected":
                         game_state = "won"
 
@@ -730,6 +766,7 @@ async def main():
                     _ks = pygame.key.get_pressed()
                     mp.send({
                         "type":    "input",
+                        "from":    mp_role,
                         "room_id": mp.room_id,
                         "keys": {
                             "w": int(_ks[pygame.K_w]),
@@ -820,11 +857,13 @@ async def main():
             # --- Combat ---
             # Build per-team target lists: (unit, carrier_ref_or_None)
             if mp_mode:
-                # Targets for local player: ghost carrier + ghost drones
-                enemy_targets = (
-                    [(ghost_carrier, None)] +
-                    [(gd, ghost_carrier) for gd in ghost_drones if gd.hp > 0]
-                )
+                # Only ghost carriers/drones marked as enemies are valid targets
+                enemy_targets = []
+                for _r, _o in mp_others.items():
+                    if _o["enemy"]:
+                        enemy_targets.append((_o["carrier"], None))
+                        enemy_targets.extend(
+                            [(gd, _o["carrier"]) for gd in _o["drones"] if gd.hp > 0])
             else:
                 enemy_targets = ([(ec, None) for ec in enemy_carriers] +
                                  [(d, ec)
@@ -852,25 +891,33 @@ async def main():
                                 enemy_targets, missiles, 'player', dt,
                                 player_can_see, d_range)
 
-            # Relay newly fired missiles to opponent in multiplayer
+            # Relay newly fired missiles to opponent(s) in multiplayer
             if mp_mode and len(missiles) > prev_missile_count:
                 for m in missiles[prev_missile_count:]:
                     if m.team == 'player':
-                        # Use stable remote_id so opponent can find the correct
-                        # drone regardless of index shifts from drone deaths
-                        if m.target is ghost_carrier:
+                        # Identify which ghost player owns the target
+                        _target_role = None
+                        for _r, _o in mp_others.items():
+                            if m.target is _o["carrier"] or m.target in _o["drones"]:
+                                _target_role = _r
+                                break
+                        if _target_role is None:
+                            continue   # target not a ghost unit, skip
+                        if m.target is mp_others[_target_role]["carrier"]:
                             tt        = "carrier"
                             target_id = -1
                         else:
                             tt        = "drone"
                             target_id = m.target.remote_id
                         mp.send({
-                            "type":        "fire",
-                            "room_id":     mp.room_id,
-                            "shooter_id":  getattr(m, 'shooter_id', -1),
-                            "target_type": tt,
-                            "target_id":   target_id,
-                            "explosive":   m.explosive,
+                            "type":          "fire",
+                            "from":          mp_role,
+                            "room_id":       mp.room_id,
+                            "shooter_id":    getattr(m, 'shooter_id', -1),
+                            "target_type":   tt,
+                            "target_id":     target_id,
+                            "target_player": _target_role,
+                            "explosive":     m.explosive,
                         })
             # Each enemy carrier is its own "player" with its own vision + attack range
             for ec, ed in zip(enemy_carriers, enemy_drones_list):
@@ -890,12 +937,14 @@ async def main():
             # Ghost units are included so explosions render at their position,
             # but missile.update() skips hp modification for _is_ghost targets.
             ghost_splash = []
-            if mp_mode and ghost_carrier is not None:
-                ghost_splash = (
-                    [(ghost_carrier, ghost_carrier.x, ghost_carrier.y)] +
-                    [(gd, ghost_carrier.x + gd.offset_x, ghost_carrier.y + gd.offset_y)
-                     for gd in ghost_drones]
-                )
+            if mp_mode:
+                for _o in mp_others.values():
+                    _gc = _o["carrier"]
+                    ghost_splash.append((_gc, _gc.x, _gc.y))
+                    ghost_splash.extend(
+                        [(gd, _gc.x + gd.offset_x, _gc.y + gd.offset_y)
+                         for gd in _o["drones"]]
+                    )
             splash_targets = (
                 [(carrier, carrier.x, carrier.y)] +
                 [(d, carrier.x + d.offset_x, carrier.y + d.offset_y) for d in drones] +
@@ -934,12 +983,12 @@ async def main():
 
             # Win / loss check
             if mp_mode:
-                # Only the player whose carrier dies sends game_over.
-                # The opponent receives it and knows they won.
-                # This avoids both players being marked as defeated.
+                # When MY carrier dies, broadcast game_over with my role so
+                # opponents (and the 2v2 win tracker) know which team lost a carrier.
                 if carrier.hp <= 0 and game_state == 'playing':
                     game_state = 'lost'
-                    mp.send({"type": "game_over", "room_id": mp.room_id})
+                    mp.send({"type": "game_over", "from": mp_role,
+                             "room_id": mp.room_id})
             else:
                 if not enemy_carriers:
                     game_state = 'won'
@@ -972,10 +1021,12 @@ async def main():
             if player_can_see(ec.x, ec.y):
                 ec.draw_trail(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
         carrier.draw_trail(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
-        # 2. Carrier bodies — enemy carriers only when visible
-        if mp_mode and ghost_carrier is not None:
-            if player_can_see(ghost_carrier.x, ghost_carrier.y):
-                ghost_carrier.draw(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
+        # 2. Carrier bodies — ghost carriers only when visible
+        if mp_mode:
+            for _o in mp_others.values():
+                _gc = _o["carrier"]
+                if player_can_see(_gc.x, _gc.y):
+                    _gc.draw(draw_surf, camera_x_mm, camera_y_mm, game_h, px_per_mm)
         else:
             for ec in enemy_carriers:
                 if player_can_see(ec.x, ec.y):
@@ -984,14 +1035,16 @@ async def main():
         # 3. Player drones
         for drone in drones:
             drone.draw(draw_surf, game_h)
-        # 4. Enemy drones — only when their world position is in player vision
-        if mp_mode and ghost_carrier is not None:
-            for gd in ghost_drones:
-                wx = ghost_carrier.x + gd.offset_x
-                wy = ghost_carrier.y + gd.offset_y
-                if player_can_see(wx, wy):
-                    gd.draw_world(draw_surf, ghost_carrier.x, ghost_carrier.y,
-                                  camera_x_mm, camera_y_mm, game_h)
+        # 4. Ghost / enemy drones — only when in player vision
+        if mp_mode:
+            for _o in mp_others.values():
+                _gc = _o["carrier"]
+                for gd in _o["drones"]:
+                    wx = _gc.x + gd.offset_x
+                    wy = _gc.y + gd.offset_y
+                    if player_can_see(wx, wy):
+                        gd.draw_world(draw_surf, _gc.x, _gc.y,
+                                      camera_x_mm, camera_y_mm, game_h)
         else:
             for ec, ed in zip(enemy_carriers, enemy_drones_list):
                 for drone in ed:

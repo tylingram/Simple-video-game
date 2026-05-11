@@ -25,7 +25,7 @@
     margin-bottom: 4px;
     text-transform: uppercase;
   }
-  .subtitle { color: #4a8a4a; font-size: 0.85rem; margin-bottom: 32px; letter-spacing: 2px; }
+  .subtitle { color: #4a8a4a; font-size: 0.85rem; margin-bottom: 24px; letter-spacing: 2px; }
 
   .card {
     background: #111811;
@@ -33,10 +33,29 @@
     border-radius: 6px;
     padding: 24px;
     width: 100%;
-    max-width: 500px;
-    margin-bottom: 20px;
+    max-width: 560px;
+    margin-bottom: 16px;
   }
   .card h2 { font-size: 0.8rem; letter-spacing: 3px; color: #4a8a4a; margin-bottom: 16px; text-transform: uppercase; }
+
+  /* Mode tabs */
+  .mode-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .tab {
+    flex: 1;
+    padding: 8px;
+    text-align: center;
+    border: 1px solid #2a4a2a;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    color: #4a8a4a;
+    background: #0a110a;
+    transition: all 0.15s;
+  }
+  .tab.active { background: #1a3a1a; border-color: #4a8a4a; color: #c8ffc8; }
+  .tab:hover:not(.active) { border-color: #3a6a3a; color: #8acc8a; }
 
   /* Join form */
   .join-row { display: flex; gap: 8px; }
@@ -58,9 +77,9 @@
     background: #1a3a1a;
     border: 1px solid #3a7a3a;
     color: #8acc8a;
-    padding: 10px 20px;
+    padding: 10px 18px;
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     letter-spacing: 1px;
     cursor: pointer;
     border-radius: 4px;
@@ -69,29 +88,57 @@
   }
   button:hover:not(:disabled) { background: #2a5a2a; color: #c8ffc8; }
   button:disabled { opacity: 0.4; cursor: default; }
-  button.danger { border-color: #7a3a3a; color: #cc8a8a; background: #3a1a1a; }
+  button.danger  { border-color: #7a3a3a; color: #cc8a8a; background: #3a1a1a; }
   button.danger:hover:not(:disabled) { background: #5a2a2a; color: #ffc8c8; }
+  button.accent  { border-color: #3a3a7a; color: #8a8acc; background: #1a1a3a; }
+  button.accent:hover:not(:disabled) { background: #2a2a5a; color: #c8c8ff; }
+  button.sm { padding: 6px 12px; font-size: 0.78rem; }
 
   /* Status dot */
   .status-bar { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #4a8a4a; margin-top: 12px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #2a4a2a; flex-shrink: 0; }
-  .dot.green { background: #3aaa3a; box-shadow: 0 0 6px #3aaa3a; }
+  .dot.green  { background: #3aaa3a; box-shadow: 0 0 6px #3aaa3a; }
   .dot.yellow { background: #aaaa3a; box-shadow: 0 0 6px #aaaa3a; }
-  .dot.red { background: #aa3a3a; box-shadow: 0 0 6px #aa3a3a; }
+  .dot.red    { background: #aa3a3a; box-shadow: 0 0 6px #aa3a3a; }
 
-  /* Player list */
-  #player-list { list-style: none; min-height: 60px; }
-  #player-list li {
+  /* Lists */
+  .item-list { list-style: none; min-height: 50px; }
+  .item-list li {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
     border-bottom: 1px solid #1a2a1a;
+    gap: 10px;
+  }
+  .item-list li:last-child { border-bottom: none; }
+  .item-name { flex: 1; color: #c8ffc8; font-size: 0.9rem; }
+  .item-sub  { flex: 1; color: #6a9a6a; font-size: 0.82rem; }
+  .empty-msg { color: #2a5a2a; font-style: italic; font-size: 0.85rem;
+               padding: 12px 0; text-align: center; }
+  .btn-group { display: flex; gap: 6px; }
+
+  /* Team panel */
+  #team-panel {
+    background: #0d1a0d;
+    border: 1px solid #3a6a3a;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
   }
-  #player-list li:last-child { border-bottom: none; }
-  .player-name { flex: 1; color: #c8ffc8; }
-  .empty-msg { color: #2a5a2a; font-style: italic; font-size: 0.85rem; padding: 12px 0; text-align: center; }
+  #team-panel .team-info { flex: 1; }
+  #team-panel .team-label { font-size: 0.72rem; letter-spacing: 2px; color: #4a8a4a; text-transform: uppercase; }
+  #team-panel .team-names { color: #c8ffc8; font-size: 0.95rem; margin-top: 4px; }
+
+  /* Info note */
+  .note { color: #4a7a4a; font-size: 0.8rem; margin-top: 10px; text-align: center; font-style: italic; }
+
+  /* Waiting */
+  .waiting-msg { color: #aaaa3a; font-size: 0.85rem; margin-top: 10px; text-align: center; }
 
   /* Modal */
   .modal-bg {
@@ -108,12 +155,12 @@
     border: 1px solid #3a7a3a;
     border-radius: 8px;
     padding: 32px;
-    max-width: 360px;
+    max-width: 380px;
     width: 90%;
     text-align: center;
   }
-  .modal h3 { color: #c8ffc8; margin-bottom: 12px; font-size: 1.1rem; }
-  .modal p  { color: #6aaa6a; margin-bottom: 24px; font-size: 0.9rem; }
+  .modal h3 { color: #c8ffc8; margin-bottom: 10px; font-size: 1.1rem; }
+  .modal p  { color: #6aaa6a; margin-bottom: 22px; font-size: 0.9rem; line-height: 1.5; }
   .modal-btns { display: flex; gap: 12px; justify-content: center; }
 
   /* Toast */
@@ -126,8 +173,6 @@
     pointer-events: none;
   }
   #toast.show { opacity: 1; }
-
-  .waiting-msg { color: #aaaa3a; font-size: 0.85rem; margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -150,14 +195,47 @@
 
 <!-- Lobby card -->
 <div class="card" id="lobby-card" style="display:none">
-  <h2>Online Players</h2>
-  <ul id="player-list">
-    <li><span class="empty-msg">Waiting for other players…</span></li>
-  </ul>
+
+  <!-- Mode tabs -->
+  <div class="mode-tabs">
+    <div class="tab active" id="tab-1v1" onclick="setMode('1v1')">1 v 1</div>
+    <div class="tab"        id="tab-2v2" onclick="setMode('2v2')">2 v 2</div>
+  </div>
+
+  <!-- Team panel (2v2 only, shown when you have a partner) -->
+  <div id="team-panel" style="display:none">
+    <div class="team-info">
+      <div class="team-label">Your Team</div>
+      <div class="team-names" id="team-names">— & —</div>
+    </div>
+    <button class="danger sm" onclick="leaveTeam()">LEAVE TEAM</button>
+  </div>
+
+  <!-- 1v1: solo players list -->
+  <div id="section-1v1">
+    <h2>Online Players</h2>
+    <ul class="item-list" id="player-list">
+      <li><span class="empty-msg">Waiting for other players…</span></li>
+    </ul>
+  </div>
+
+  <!-- 2v2: solo players (invite to team) + full teams (challenge) -->
+  <div id="section-2v2" style="display:none">
+    <h2>Players — Invite as Partner</h2>
+    <ul class="item-list" id="solo-list">
+      <li><span class="empty-msg">No solo players online…</span></li>
+    </ul>
+    <h2 style="margin-top:16px">Teams — Challenge</h2>
+    <ul class="item-list" id="team-list">
+      <li><span class="empty-msg">No full teams yet…</span></li>
+    </ul>
+    <p class="note" id="team-note">Form a team first by inviting a partner, then challenge another team.</p>
+  </div>
+
   <p class="waiting-msg" id="waiting-msg" style="display:none">Waiting for response…</p>
 </div>
 
-<!-- Incoming challenge modal -->
+<!-- Incoming 1v1 challenge modal -->
 <div class="modal-bg" id="challenge-modal">
   <div class="modal">
     <h3>Incoming Challenge</h3>
@@ -169,11 +247,35 @@
   </div>
 </div>
 
+<!-- Incoming partner request modal -->
+<div class="modal-bg" id="partner-modal">
+  <div class="modal">
+    <h3>Partner Request</h3>
+    <p id="partner-text">Someone wants to team up!</p>
+    <div class="modal-btns">
+      <button id="partner-accept-btn">TEAM UP</button>
+      <button class="danger" id="partner-decline-btn">DECLINE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Incoming team challenge modal -->
+<div class="modal-bg" id="team-challenge-modal">
+  <div class="modal">
+    <h3>Team Challenge!</h3>
+    <p id="team-challenge-text">A team wants to fight yours!</p>
+    <div class="modal-btns">
+      <button id="team-accept-btn">ACCEPT</button>
+      <button class="danger" id="team-decline-btn">DECLINE</button>
+    </div>
+  </div>
+</div>
+
 <!-- Match starting modal -->
 <div class="modal-bg" id="starting-modal">
   <div class="modal">
     <h3>Match Starting…</h3>
-    <p id="starting-text">Launching game vs Opponent</p>
+    <p id="starting-text">Launching game…</p>
   </div>
 </div>
 
@@ -181,58 +283,69 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-// After deploying the server to Render, set the GitHub Actions variable
-// MP_SERVER_URL and the deploy workflow will replace REPLACE_SERVER_URL below.
 const SERVER_URL = "REPLACE_SERVER_URL";
-const GAME_URL   = "index.html";   // relative URL of the pygbag game
+const GAME_URL   = "index.html";
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let ws            = null;
-let myName        = "";
-let pendingFromId = null;
-let pendingFromName = "";
+let ws              = null;
+let myName          = "";
+let myMode          = "1v1";    // current mode tab
+let myTeamId        = null;     // null = no team
+let myPartnerId     = null;
+let myPartnerName   = "";
+let pendingFrom     = {};       // generic pending-sender for modal { id, name }
+let pendingTeamFrom = {};       // team_id, team_name for team challenge
 let challengeSentTo = null;
+let teamChallengeSentTo = null;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
-const statusDot     = document.getElementById("status-dot");
-const statusText    = document.getElementById("status-text");
-const joinCard      = document.getElementById("join-card");
-const lobbyCard     = document.getElementById("lobby-card");
-const nameInput     = document.getElementById("name-input");
-const joinBtn       = document.getElementById("join-btn");
-const playerList    = document.getElementById("player-list");
-const waitingMsg    = document.getElementById("waiting-msg");
-const challengeMod  = document.getElementById("challenge-modal");
-const challengeText = document.getElementById("challenge-text");
-const acceptBtn     = document.getElementById("accept-btn");
-const declineBtn    = document.getElementById("decline-btn");
-const startingMod   = document.getElementById("starting-modal");
-const startingText  = document.getElementById("starting-text");
-const toast         = document.getElementById("toast");
+const statusDot          = document.getElementById("status-dot");
+const statusText         = document.getElementById("status-text");
+const joinCard           = document.getElementById("join-card");
+const lobbyCard          = document.getElementById("lobby-card");
+const nameInput          = document.getElementById("name-input");
+const joinBtn            = document.getElementById("join-btn");
+const waitingMsg         = document.getElementById("waiting-msg");
+const teamPanel          = document.getElementById("team-panel");
+const teamNames          = document.getElementById("team-names");
+const teamNote           = document.getElementById("team-note");
+const section1v1         = document.getElementById("section-1v1");
+const section2v2         = document.getElementById("section-2v2");
+const playerList         = document.getElementById("player-list");
+const soloList           = document.getElementById("solo-list");
+const teamList           = document.getElementById("team-list");
+
+// Modals
+const challengeMod       = document.getElementById("challenge-modal");
+const challengeText      = document.getElementById("challenge-text");
+const acceptBtn          = document.getElementById("accept-btn");
+const declineBtn         = document.getElementById("decline-btn");
+const partnerMod         = document.getElementById("partner-modal");
+const partnerText        = document.getElementById("partner-text");
+const partnerAcceptBtn   = document.getElementById("partner-accept-btn");
+const partnerDeclineBtn  = document.getElementById("partner-decline-btn");
+const teamChallengeMod   = document.getElementById("team-challenge-modal");
+const teamChallengeText  = document.getElementById("team-challenge-text");
+const teamAcceptBtn      = document.getElementById("team-accept-btn");
+const teamDeclineBtn     = document.getElementById("team-decline-btn");
+const startingMod        = document.getElementById("starting-modal");
+const startingText       = document.getElementById("starting-text");
+const toast              = document.getElementById("toast");
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connect() {
   ws = new WebSocket(SERVER_URL);
-
-  ws.onopen = function() {
+  ws.onopen  = function() {
     setStatus("green", "Connected — enter your name to join");
     joinBtn.disabled = false;
   };
-
   ws.onclose = function() {
     setStatus("red", "Disconnected — reload to reconnect");
     joinBtn.disabled = true;
     setTimeout(connect, 3000);
   };
-
-  ws.onerror = function() {
-    setStatus("red", "Connection error");
-  };
-
-  ws.onmessage = function(e) {
-    const msg = JSON.parse(e.data);
-    handleMessage(msg);
-  };
+  ws.onerror = function() { setStatus("red", "Connection error"); };
+  ws.onmessage = function(e) { handleMessage(JSON.parse(e.data)); };
 }
 
 function send(data) {
@@ -240,8 +353,17 @@ function send(data) {
 }
 
 function setStatus(color, text) {
-  statusDot.className  = "dot " + color;
+  statusDot.className   = "dot " + color;
   statusText.textContent = text;
+}
+
+// ── Mode tabs ─────────────────────────────────────────────────────────────────
+function setMode(mode) {
+  myMode = mode;
+  document.getElementById("tab-1v1").classList.toggle("active", mode === "1v1");
+  document.getElementById("tab-2v2").classList.toggle("active", mode === "2v2");
+  section1v1.style.display = mode === "1v1" ? "" : "none";
+  section2v2.style.display = mode === "2v2" ? "" : "none";
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -249,104 +371,240 @@ function handleMessage(msg) {
   switch (msg.type) {
 
     case "lobby_update":
-      renderPlayerList(msg.players);
+      renderPlayerList(msg.players || []);
+      renderSoloList(msg.players || []);
+      renderTeamList(msg.teams   || []);
       break;
 
+    // 1v1 challenge
     case "challenge_received":
-      pendingFromId   = msg.from_id;
-      pendingFromName = msg.from_name;
-      challengeText.textContent = `${msg.from_name} wants to fight!`;
+      pendingFrom = { id: msg.from_id, name: msg.from_name };
+      challengeText.textContent = msg.from_name + " wants to fight 1v1!";
       challengeMod.classList.add("visible");
       break;
-
     case "challenge_declined":
       challengeSentTo = null;
       waitingMsg.style.display = "none";
-      showToast(`${msg.from_name} declined your challenge`);
+      showToast(msg.from_name + " declined your challenge");
       break;
 
+    // Partner
+    case "partner_request":
+      pendingFrom = { id: msg.from_id, name: msg.from_name };
+      partnerText.textContent = msg.from_name + " wants to be your 2v2 partner!";
+      partnerMod.classList.add("visible");
+      break;
+    case "partner_formed":
+      myTeamId      = msg.team_id;
+      myPartnerId   = msg.partner_id;
+      myPartnerName = msg.partner_name;
+      teamNames.textContent = myName + " & " + myPartnerName;
+      teamPanel.style.display = "";
+      teamNote.style.display  = "none";
+      waitingMsg.style.display = "none";
+      showToast("Teamed up with " + myPartnerName + "!");
+      break;
+    case "partner_declined":
+      waitingMsg.style.display = "none";
+      showToast(msg.from_name + " declined your partner request");
+      break;
+    case "partner_cancelled":
+      myTeamId = null; myPartnerId = null; myPartnerName = "";
+      teamPanel.style.display = "none";
+      teamNote.style.display  = "";
+      showToast("Your partner left the team");
+      break;
+
+    // 2v2 team challenge
+    case "team_challenge_received":
+      if (!myTeamId) break;  // ignore if not in a team
+      pendingTeamFrom = { team_id: msg.from_team_id, name: msg.team_name };
+      teamChallengeText.textContent = msg.team_name + " challenges your team!";
+      teamChallengeMod.classList.add("visible");
+      break;
+    case "team_challenge_declined":
+      teamChallengeSentTo = null;
+      waitingMsg.style.display = "none";
+      showToast(msg.from_name + " declined the team challenge");
+      break;
+
+    // Match start
     case "match_start":
       challengeMod.classList.remove("visible");
-      startingText.textContent = `Launching vs ${msg.opponent_name}…`;
+      teamChallengeMod.classList.remove("visible");
+      var desc = "";
+      if (msg.mode === "2v2") {
+        var enemies = (msg.enemies || []).join(" & ");
+        desc = "Launching 2v2 vs " + enemies + "…";
+      } else {
+        desc = "Launching vs " + msg.opponent_name + "…";
+      }
+      startingText.textContent = desc;
       startingMod.classList.add("visible");
-      // Small delay then redirect into the game
       setTimeout(function() {
-        const params = new URLSearchParams({
-          mp:       "1",
-          room:     msg.room_id,
-          role:     msg.role,
-          server:   SERVER_URL,
-          opponent: msg.opponent_name,
-        });
-        window.location.href = GAME_URL + "?" + params.toString();
+        var p = new URLSearchParams({ mp: "1", room: msg.room_id, role: msg.role, server: SERVER_URL });
+        if (msg.mode === "2v2") {
+          p.set("ally",    msg.ally    || "");
+          p.set("enemies", (msg.enemies || []).join(","));
+        } else {
+          p.set("opponent", msg.opponent_name || "Opponent");
+        }
+        window.location.href = GAME_URL + "?" + p.toString();
       }, 1200);
       break;
   }
 }
 
-// ── Player list ───────────────────────────────────────────────────────────────
+// ── Render lists ──────────────────────────────────────────────────────────────
 function renderPlayerList(players) {
+  // 1v1 player list
   playerList.innerHTML = "";
-  const others = players.filter(p => p.name !== myName);
-
+  var others = players.filter(function(p) { return p.name !== myName; });
   if (others.length === 0) {
-    const li = document.createElement("li");
-    li.innerHTML = '<span class="empty-msg">No other players online yet…</span>';
-    playerList.appendChild(li);
+    li(playerList, '<span class="empty-msg">No other players online yet…</span>');
     return;
   }
-
   others.forEach(function(p) {
-    const li  = document.createElement("li");
-    const btn = document.createElement("button");
-    btn.textContent = "CHALLENGE";
-    btn.disabled    = (challengeSentTo !== null);
-    btn.onclick     = function() { sendChallenge(p.id, p.name); };
-
-    const span = document.createElement("span");
-    span.className   = "player-name";
-    span.textContent = p.name;
-
-    li.appendChild(span);
-    li.appendChild(btn);
-    playerList.appendChild(li);
+    var row = document.createElement("li");
+    var btn = mkBtn("CHALLENGE", function() { sendChallenge(p.id, p.name); },
+                    challengeSentTo !== null);
+    row.appendChild(nameSpan(p.name));
+    row.appendChild(btn);
+    playerList.appendChild(row);
   });
+}
+
+function renderSoloList(players) {
+  // 2v2: solo players available to invite as partner
+  soloList.innerHTML = "";
+  var others = players.filter(function(p) { return p.name !== myName; });
+  if (others.length === 0) {
+    li(soloList, '<span class="empty-msg">No solo players online…</span>');
+    return;
+  }
+  others.forEach(function(p) {
+    var row = document.createElement("li");
+    var hasTeam = !!myTeamId;
+    var btn = mkBtn("INVITE", function() { sendPartnerRequest(p.id, p.name); },
+                    hasTeam || !!challengeSentTo);
+    row.appendChild(nameSpan(p.name));
+    row.appendChild(btn);
+    soloList.appendChild(row);
+  });
+}
+
+function renderTeamList(teams) {
+  // 2v2: full teams available to challenge
+  teamList.innerHTML = "";
+  var myTeamEntry = teams.find(function(t) {
+    return t.p1_id === myPartnerId || t.p2_id === myPartnerId ||
+           t.p1_name === myPartnerName || t.p2_name === myPartnerName;
+  });
+  var others = teams.filter(function(t) { return t.team_id !== myTeamId; });
+  if (others.length === 0) {
+    li(teamList, '<span class="empty-msg">No other full teams yet…</span>');
+    return;
+  }
+  others.forEach(function(t) {
+    var row   = document.createElement("li");
+    var label = t.p1_name + " & " + t.p2_name;
+    var canChallenge = !!myTeamId && !teamChallengeSentTo;
+    var btn = mkBtn("CHALLENGE", function() { sendTeamChallenge(t.team_id, label); },
+                    !canChallenge);
+    btn.className += " accent";
+    row.appendChild(nameSpan(label));
+    row.appendChild(btn);
+    teamList.appendChild(row);
+  });
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+function li(parent, html) {
+  var row = document.createElement("li");
+  row.innerHTML = html;
+  parent.appendChild(row);
+}
+function nameSpan(text) {
+  var s = document.createElement("span");
+  s.className = "item-name";
+  s.textContent = text;
+  return s;
+}
+function mkBtn(label, onclick, disabled) {
+  var btn = document.createElement("button");
+  btn.className = "sm";
+  btn.textContent = label;
+  btn.disabled    = !!disabled;
+  btn.onclick     = onclick;
+  return btn;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 joinBtn.onclick = function() {
-  const name = nameInput.value.trim();
+  var name = nameInput.value.trim();
   if (!name) return;
   myName = name;
   send({ type: "join", name: name });
   joinCard.style.display  = "none";
   lobbyCard.style.display = "block";
 };
-
-nameInput.addEventListener("keydown", function(e) {
-  if (e.key === "Enter") joinBtn.click();
-});
+nameInput.addEventListener("keydown", function(e) { if (e.key === "Enter") joinBtn.click(); });
 
 function sendChallenge(targetId, targetName) {
   challengeSentTo = targetId;
   waitingMsg.style.display = "block";
-  waitingMsg.textContent   = `Waiting for ${targetName} to respond…`;
+  waitingMsg.textContent   = "Waiting for " + targetName + " to respond…";
   send({ type: "challenge", target_id: targetId });
-  // Re-render so all challenge buttons go grey
-  renderPlayerList(Array.from(playerList.querySelectorAll(".player-name")).map(function(s) {
-    return { name: s.textContent };
-  }));
 }
 
+function sendPartnerRequest(targetId, targetName) {
+  if (myTeamId) return;
+  waitingMsg.style.display = "block";
+  waitingMsg.textContent   = "Waiting for " + targetName + " to accept…";
+  send({ type: "partner_request", target_id: targetId });
+}
+
+function leaveTeam() {
+  send({ type: "partner_cancel" });
+  myTeamId = null; myPartnerId = null; myPartnerName = "";
+  teamPanel.style.display  = "none";
+  teamNote.style.display   = "";
+}
+
+function sendTeamChallenge(targetTeamId, teamLabel) {
+  if (!myTeamId) return;
+  teamChallengeSentTo = targetTeamId;
+  waitingMsg.style.display = "block";
+  waitingMsg.textContent   = "Waiting for " + teamLabel + " to respond…";
+  send({ type: "team_challenge", target_team_id: targetTeamId });
+}
+
+// Modal buttons
 acceptBtn.onclick = function() {
   challengeMod.classList.remove("visible");
-  send({ type: "challenge_accept", from_id: pendingFromId });
+  send({ type: "challenge_accept", from_id: pendingFrom.id });
 };
-
 declineBtn.onclick = function() {
   challengeMod.classList.remove("visible");
-  send({ type: "challenge_decline", from_id: pendingFromId });
-  pendingFromId = null;
+  send({ type: "challenge_decline", from_id: pendingFrom.id });
+};
+
+partnerAcceptBtn.onclick = function() {
+  partnerMod.classList.remove("visible");
+  send({ type: "partner_accept", from_id: pendingFrom.id });
+};
+partnerDeclineBtn.onclick = function() {
+  partnerMod.classList.remove("visible");
+  send({ type: "partner_decline", from_id: pendingFrom.id });
+};
+
+teamAcceptBtn.onclick = function() {
+  teamChallengeMod.classList.remove("visible");
+  send({ type: "team_challenge_accept", from_team_id: pendingTeamFrom.team_id });
+};
+teamDeclineBtn.onclick = function() {
+  teamChallengeMod.classList.remove("visible");
+  send({ type: "team_challenge_decline", from_team_id: pendingTeamFrom.team_id });
 };
 
 // ── Toast ─────────────────────────────────────────────────────────────────────

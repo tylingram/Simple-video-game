@@ -17,17 +17,22 @@ import json
 import sys
 
 # ── public ────────────────────────────────────────────────────────────────────
-room_id:       str = ""
-role:          str = ""
-opponent_name: str = "Opponent"
+room_id:       str  = ""
+role:          str  = ""          # "host"|"guest" (1v1) or "t1p1".."t2p2" (2v2)
+mode:          str  = "1v1"       # "1v1" or "2v2"
+opponent_name: str  = "Opponent"  # display label (1v1 opponent or 2v2 enemy team)
+ally_name:     str  = ""          # 2v2 partner name (empty in 1v1)
 
 
-def setup(server_url: str, r_id: str, r_role: str, opp: str) -> None:
+def setup(server_url: str, r_id: str, r_role: str, opp: str,
+          r_mode: str = "1v1", ally: str = "") -> None:
     """Record room metadata. WebSocket is already open (JS set it up in <head>)."""
-    global room_id, role, opponent_name
+    global room_id, role, mode, opponent_name, ally_name
     room_id       = r_id
     role          = r_role
+    mode          = r_mode
     opponent_name = opp
+    ally_name     = ally
     # No WebSocket setup needed here — JS handles it before the game loads.
 
 
